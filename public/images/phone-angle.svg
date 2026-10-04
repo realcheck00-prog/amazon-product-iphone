@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 700" width="900" height="700" role="img" aria-labelledby="t d">
+  <title id="t">iPhone 17 Pro Max, Cosmic Orange — angled view</title>
+  <desc id="d">Three-quarter view of the aluminium unibody showing the back, camera plateau and the edge.</desc>
+  <defs>
+    <linearGradient id="backGrad" x1="0.1" y1="0" x2="0.95" y2="1">
+      <stop offset="0" stop-color="#eda268" />
+      <stop offset="0.34" stop-color="#d4732f" />
+      <stop offset="0.7" stop-color="#b1551c" />
+      <stop offset="1" stop-color="#8d3f0d" />
+    </linearGradient>
+    <linearGradient id="edgeGrad" x1="0" y1="0" x2="1" y2="0.2">
+      <stop offset="0" stop-color="#ffd9b4" />
+      <stop offset="0.5" stop-color="#d8873f" />
+      <stop offset="1" stop-color="#8b3d0c" />
+    </linearGradient>
+    <linearGradient id="frontGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b1b20" />
+      <stop offset="1" stop-color="#08070a" />
+    </linearGradient>
+    <radialGradient id="wallA" cx="0.7" cy="0.22" r="0.75">
+      <stop offset="0" stop-color="#ff8f45" />
+      <stop offset="0.36" stop-color="#c4501e" />
+      <stop offset="0.72" stop-color="#5d2010" />
+      <stop offset="1" stop-color="#140603" />
+    </radialGradient>
+    <radialGradient id="wallB" cx="0.2" cy="0.85" r="0.7">
+      <stop offset="0" stop-color="#7a2fd0" stop-opacity="0.7" />
+      <stop offset="1" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="plateauGrad" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#e9a065" />
+      <stop offset="0.55" stop-color="#c16524" />
+      <stop offset="1" stop-color="#9c4714" />
+    </linearGradient>
+    <radialGradient id="lensGlass" cx="0.36" cy="0.3" r="0.78">
+      <stop offset="0" stop-color="#6f7f96" />
+      <stop offset="0.3" stop-color="#2b3340" />
+      <stop offset="0.64" stop-color="#0d1117" />
+      <stop offset="1" stop-color="#05070a" />
+    </radialGradient>
+    <radialGradient id="lensRing" cx="0.35" cy="0.28" r="0.8">
+      <stop offset="0" stop-color="#f4cba6" />
+      <stop offset="0.5" stop-color="#a9551d" />
+      <stop offset="1" stop-color="#6d2f08" />
+    </radialGradient>
+    <radialGradient id="flash" cx="0.4" cy="0.34" r="0.7">
+      <stop offset="0" stop-color="#fff8ec" />
+      <stop offset="0.55" stop-color="#f0dcbe" />
+      <stop offset="1" stop-color="#b79a75" />
+    </radialGradient>
+    <filter id="softShadow" x="-30%" y="-30%" width="170%" height="180%">
+      <feDropShadow dx="0" dy="26" stdDeviation="26" flood-color="#2b1204" flood-opacity="0.32" />
+    </filter>
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" seed="3" result="n" />
+      <feColorMatrix type="saturate" values="0" in="n" result="ng" />
+      <feComponentTransfer in="ng" result="na">
+        <feFuncA type="linear" slope="0.05" intercept="0" />
+      </feComponentTransfer>
+      <feComposite operator="over" in="na" in2="SourceGraphic" />
+    </filter>
+  </defs>
+
+  <ellipse cx="450" cy="620" rx="270" ry="34" fill="#8a4a1c" opacity="0.16" />
+
+  <g filter="url(#softShadow)">
+    <!-- far edge (front slab peeking on the right) -->
+    <path d="M498 92 L640 176 L640 556 L498 470 Z" fill="url(#edgeGrad)" />
+    <path d="M520 108 L624 176 L624 546 L520 466 Z" fill="url(#frontGrad)" />
+    <path d="M520 108 L624 176 L624 546 L520 466 Z" fill="url(#wallA)" opacity="0.55" />
+    <path d="M520 108 L624 176 L624 546 L520 466 Z" fill="url(#wallB)" opacity="0.5" />
+
+    <!-- near edge rail -->
+    <path d="M452 70 L498 92 L498 470 L452 442 Z" fill="url(#edgeGrad)" />
+
+    <!-- back slab -->
+    <path d="M168 92 L452 70 L452 442 L168 470 Z" fill="url(#backGrad)" />
+    <path d="M168 92 L452 70 L452 442 L168 470 Z" fill="#ffffff" filter="url(#grain)" opacity="0.9" />
+    <path d="M168 92 L330 79 L200 470 L168 470 Z" fill="#ffffff" opacity="0.1" />
+
+    <!-- camera plateau on the back slab -->
+    <g transform="matrix(1 -0.049 0 1 196 116)">
+      <rect x="0" y="0" width="150" height="150" rx="40" ry="40" fill="#5e2405" opacity="0.26" />
+      <rect x="-2" y="-4" width="150" height="150" rx="40" ry="40" fill="url(#plateauGrad)" />
+      <g>
+        <circle cx="41" cy="39" r="27" fill="url(#lensRing)" />
+        <circle cx="41" cy="39" r="19" fill="#0a0e14" />
+        <circle cx="41" cy="39" r="17" fill="url(#lensGlass)" />
+        <circle cx="35" cy="33" r="4.5" fill="#cfe0f5" opacity="0.5" />
+      </g>
+      <g>
+        <circle cx="41" cy="95" r="27" fill="url(#lensRing)" />
+        <circle cx="41" cy="95" r="19" fill="#0a0e14" />
+        <circle cx="41" cy="95" r="17" fill="url(#lensGlass)" />
+        <circle cx="35" cy="89" r="4.5" fill="#cfe0f5" opacity="0.5" />
+      </g>
+      <g>
+        <circle cx="99" cy="67" r="27" fill="url(#lensRing)" />
+        <circle cx="99" cy="67" r="19" fill="#0a0e14" />
+        <circle cx="99" cy="67" r="17" fill="url(#lensGlass)" />
+        <circle cx="93" cy="61" r="4.5" fill="#cfe0f5" opacity="0.5" />
+      </g>
+      <circle cx="85" cy="16" r="8" fill="url(#flash)" />
+      <circle cx="108" cy="16" r="8" fill="#161c25" />
+      <circle cx="106" cy="14" r="2" fill="#9fb6d1" opacity="0.6" />
+    </g>
+
+    <!-- wordmark -->
+    <text
+      x="196"
+      y="428"
+      font-family="Inter Variable, Inter, Helvetica, Arial, sans-serif"
+      font-size="17"
+      letter-spacing="4.5"
+      fill="#ffeedd"
+      opacity="0.55"
+    >
+      iPhone
+    </text>
+
+    <path
+      d="M168 92 L452 70 L452 442 L168 470 Z"
+      fill="none"
+      stroke="#ffe6cd"
+      stroke-opacity="0.45"
+      stroke-width="1.4"
+    />
+  </g>
+</svg>

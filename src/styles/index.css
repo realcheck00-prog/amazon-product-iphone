@@ -1,0 +1,284 @@
+@import 'tailwindcss';
+
+@import '@fontsource-variable/inter';
+
+/* ==========================================================================
+   DESIGN SYSTEM — single source of truth
+   All colour, type, radius, elevation and motion values are declared here and
+   exposed to Tailwind as utilities (e.g. `bg-surface`, `text-ink-2`, `rounded-card`).
+   ========================================================================== */
+
+@theme {
+  /* ---- Typography ------------------------------------------------------ */
+  --font-sans:
+    'Inter Variable', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+
+  /* Amazon PDP scale */
+  --text-title-lg: 1.375rem;
+  --text-title-lg--line-height: 1.6rem;
+  --text-title-lg--letter-spacing: -0.01em;
+
+  --text-price: 1.75rem;
+  --text-price--line-height: 2.125rem;
+  --text-price--letter-spacing: -0.02em;
+
+  /* ---- Brand palette --------------------------------------------------- */
+  --color-navy-900: #131921;
+  --color-navy-800: #232f3e;
+  --color-navy-700: #29394f;
+  --color-navy-600: #37475a;
+
+  --color-amber-300: #ffd814;
+  --color-amber-400: #febd69;
+  --color-amber-500: #f3a847;
+
+  /* ---- Semantic surfaces ---------------------------------------------- */
+  --color-page: #f3f3f3;
+  --color-surface: #ffffff;
+  --color-surface-sunken: #f7f7f7;
+  --color-surface-raised: #fafafa;
+  --color-surface-muted: #f0f0f0;
+
+  /* ---- Semantic ink ---------------------------------------------------- */
+  --color-ink: #0f1111;
+  --color-ink-2: #3f4142;
+  --color-ink-3: #565959;
+  --color-ink-4: #7c8186;
+  --color-ink-inverse: #ffffff;
+
+  /* ---- Lines ----------------------------------------------------------- */
+  --color-line: #d5d9d9;
+  --color-line-soft: #e7e7e7;
+  --color-line-strong: #b7b9b8;
+
+  /* ---- Accents --------------------------------------------------------- */
+  --color-link: #007185;
+  --color-link-hover: #c19a6b;
+  --color-link-visited: #126179;
+  --color-price: #0f1111;
+  --color-deal: #cc0c39;
+  --color-success: #067d62;
+  --color-info: #007eb9;
+  --color-star: #de7921;
+  --color-brand-orange: #f08804;
+
+  /* ---- Radii ----------------------------------------------------------- */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-card: 8px;
+  --radius-pill: 999px;
+
+  /* ---- Elevation ------------------------------------------------------- */
+  --shadow-hairline: 0 1px 2px rgb(15 17 17 / 0.06);
+  --shadow-card: 0 1px 3px rgb(15 17 17 / 0.08), 0 0 0 1px rgb(213 217 217 / 0.9);
+  --shadow-raised: 0 6px 16px rgb(15 17 17 / 0.12);
+  --shadow-nav-sticky: 0 2px 4px rgb(15 17 17 / 0.14);
+
+  /* ---- Layout ---------------------------------------------------------- */
+  --spacing-page-x: 1rem;
+  --container-page: 1500px;
+
+  /* ---- Motion ---------------------------------------------------------- */
+  --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-fade-in: fade-in 160ms var(--ease-out-soft) both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ==========================================================================
+   Base layer
+   ========================================================================== */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--color-line);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-page);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: 'tnum' 0;
+  }
+
+  button {
+    cursor: pointer;
+    font: inherit;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-link);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+
+  /* Numerals in prices, ratings and specs read better tabular. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ==========================================================================
+   Component primitives — reusable across the page
+   ========================================================================== */
+@layer components {
+  .panel {
+    background-color: var(--color-surface);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+  }
+
+  .link {
+    color: var(--color-link);
+    cursor: pointer;
+  }
+
+  .link:hover {
+    color: var(--color-link-hover);
+    text-decoration: underline;
+  }
+
+  .link-underline:hover {
+    text-decoration: underline;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: var(--radius-pill);
+    padding: 0.5625rem 1.375rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    transition:
+      background-color 120ms var(--ease-out-soft),
+      border-color 120ms var(--ease-out-soft),
+      box-shadow 120ms var(--ease-out-soft),
+      transform 80ms var(--ease-out-soft);
+  }
+
+  .btn:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  .btn-primary {
+    background-color: var(--color-amber-300);
+    color: var(--color-ink);
+    box-shadow: 0 1px 2px rgb(15 17 17 / 0.16);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background-color: var(--color-amber-400);
+  }
+
+  .btn-secondary {
+    background-color: var(--color-surface-muted);
+    color: var(--color-ink);
+    box-shadow: 0 1px 2px rgb(15 17 17 / 0.1);
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    background-color: #e4e4e4;
+  }
+
+  .btn-outline {
+    background-color: var(--color-surface);
+    color: var(--color-link);
+    box-shadow: inset 0 0 0 1px var(--color-link);
+  }
+
+  .btn-outline:hover:not(:disabled) {
+    background-color: #f0f7f8;
+  }
+
+  .btn:disabled {
+    opacity: 0.55;
+    box-shadow: none;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: var(--radius-pill);
+    padding: 0.125rem 0.5rem;
+    font-size: var(--text-2xs);
+    line-height: 1rem;
+    font-weight: 500;
+  }
+
+  .divider {
+    height: 1px;
+    background-color: var(--color-line-soft);
+  }
+}
+
+/* ==========================================================================
+   Utilities
+   ========================================================================== */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility page-gutter {
+  padding-inline: var(--spacing-page-x);
+  @media (width >= 768px) {
+    padding-inline: 1.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

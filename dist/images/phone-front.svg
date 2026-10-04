@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 820" width="400" height="820" role="img" aria-labelledby="t d">
+  <title id="t">iPhone 17 Pro Max, Cosmic Orange — front view</title>
+  <desc id="d">Front display with Ceramic Shield 2, Dynamic Island and the 6.9 inch Super Retina XDR screen.</desc>
+  <defs>
+    <linearGradient id="frameEdge" x1="0" y1="0" x2="1" y2="0.4">
+      <stop offset="0" stop-color="#ffcfa3" />
+      <stop offset="0.05" stop-color="#e08a4c" />
+      <stop offset="0.5" stop-color="#a85119" />
+      <stop offset="0.95" stop-color="#e49358" />
+      <stop offset="1" stop-color="#8b3d0c" />
+    </linearGradient>
+    <radialGradient id="wallA" cx="0.72" cy="0.2" r="0.72">
+      <stop offset="0" stop-color="#ff8a3d" />
+      <stop offset="0.35" stop-color="#c9501f" />
+      <stop offset="0.7" stop-color="#6b2410" />
+      <stop offset="1" stop-color="#160603" />
+    </radialGradient>
+    <radialGradient id="wallB" cx="0.25" cy="0.86" r="0.7">
+      <stop offset="0" stop-color="#7a2fd0" stop-opacity="0.85" />
+      <stop offset="0.5" stop-color="#3a1466" stop-opacity="0.5" />
+      <stop offset="1" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="wallC" cx="0.86" cy="0.72" r="0.55">
+      <stop offset="0" stop-color="#ffb066" stop-opacity="0.55" />
+      <stop offset="1" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="screenSheen" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16" />
+      <stop offset="0.35" stop-color="#ffffff" stop-opacity="0.03" />
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.05" />
+    </linearGradient>
+    <filter id="softShadow" x="-30%" y="-20%" width="160%" height="150%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#1c0d04" flood-opacity="0.38" />
+    </filter>
+    <clipPath id="screenClip">
+      <rect x="30" y="20" width="340" height="780" rx="50" ry="50" />
+    </clipPath>
+  </defs>
+
+  <g filter="url(#softShadow)">
+    <rect x="16" y="10" width="368" height="800" rx="62" ry="62" fill="url(#frameEdge)" />
+    <rect x="21" y="14" width="358" height="792" rx="59" ry="59" fill="#0a0a0c" />
+    <g clip-path="url(#screenClip)">
+      <rect x="30" y="20" width="340" height="780" fill="#08070a" />
+      <rect x="30" y="20" width="340" height="780" fill="url(#wallA)" />
+      <rect x="30" y="20" width="340" height="780" fill="url(#wallB)" />
+      <rect x="30" y="20" width="340" height="780" fill="url(#wallC)" />
+      <path d="M30 560 C 120 470, 210 640, 370 470 L370 800 L30 800 Z" fill="#1b0710" opacity="0.42" />
+      <rect x="30" y="20" width="340" height="780" fill="url(#screenSheen)" />
+    </g>
+
+    <!-- Dynamic Island -->
+    <rect x="145" y="40" width="110" height="34" rx="17" ry="17" fill="#050506" />
+    <circle cx="164" cy="57" r="6" fill="#0b1524" />
+    <circle cx="164" cy="57" r="2.6" fill="#16324f" />
+    <circle cx="239" cy="57" r="4.4" fill="#0b1524" />
+
+    <!-- Ceramic Shield 2 anti-reflective edge -->
+    <rect
+      x="29.4"
+      y="19.4"
+      width="341.2"
+      height="781.2"
+      rx="50.6"
+      ry="50.6"
+      fill="none"
+      stroke="#ffffff"
+      stroke-opacity="0.22"
+      stroke-width="1.2"
+    />
+    <rect
+      x="16.9"
+      y="10.9"
+      width="366.2"
+      height="798.2"
+      rx="61"
+      ry="61"
+      fill="none"
+      stroke="#ffe6cd"
+      stroke-opacity="0.55"
+      stroke-width="1.8"
+    />
+  </g>
+</svg>
