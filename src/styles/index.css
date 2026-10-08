@@ -223,6 +223,16 @@
     background-color: #e4e4e4;
   }
 
+  .btn-accent {
+    background-color: var(--color-amber-400);
+    color: var(--color-ink);
+    box-shadow: 0 1px 2px rgb(15 17 17 / 0.16);
+  }
+
+  .btn-accent:hover:not(:disabled) {
+    background-color: var(--color-amber-500);
+  }
+
   .btn-outline {
     background-color: var(--color-surface);
     color: var(--color-link);

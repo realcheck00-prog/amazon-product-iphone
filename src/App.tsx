@@ -2,6 +2,7 @@ import { ProductHeader } from '@/components/pdp/ProductHeader'
 import { PriceBlock } from '@/components/pdp/PriceBlock'
 import { EmiBlock } from '@/components/pdp/EmiBlock'
 import { ImageGallery } from '@/components/pdp/ImageGallery'
+import { PurchaseActions } from '@/components/pdp/PurchaseActions'
 import { OffersStrip } from '@/components/pdp/OffersStrip'
 import { WarrantyHighlights } from '@/components/pdp/WarrantyHighlights'
 import { VariantSelector } from '@/components/pdp/VariantSelector'
@@ -54,6 +55,12 @@ export default function App() {
             <div className="min-w-0">
               <div className="lg:sticky lg:top-[calc(2rem+3.5rem+2.75rem)]">
                 <ImageGallery />
+                {/*
+                  Mobile/tablet: the purchase buttons sit immediately below the
+                  gallery and above all product information. On desktop (`lg+`)
+                  they live in the buy box instead.
+                */}
+                <PurchaseActions className="mt-3 lg:hidden" />
               </div>
             </div>
 

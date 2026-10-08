@@ -36,13 +36,13 @@ export const product = {
 } as const
 
 export const price = {
-  /** `₹1,42,490.00 with 5 percent savings` */
-  dealBadge: '5%',
-  amount: 142490,
-  mrp: 149900,
+  /** Single storefront price — `$100`. No MRP / discount is displayed. */
+  dealBadge: '0%',
+  amount: 100,
+  mrp: 100,
   inclusiveOfTaxes: true,
   emi: {
-    monthly: 5010,
+    monthly: 100,
     noCostEmiAvailable: true,
   },
 } as const
@@ -257,19 +257,19 @@ export const productInformation = {
 export const offers = [
   {
     kind: 'Cashback',
-    title: 'Upto ₹4,274.00 cashback as Amazon Pay Balance',
+    title: 'Cashback as Amazon Pay Balance',
     detail: 'when you pay with Amazon Pay ICICI Bank Credit Cards',
     count: '1 offer',
   },
   {
     kind: 'No Cost EMI',
-    title: 'Upto ₹6,416.16 EMI interest savings',
+    title: 'EMI interest savings',
     detail: 'on Amazon Pay ICICI Bank Credit Cards',
     count: '1 offer',
   },
   {
     kind: 'Bank Offer',
-    title: 'Upto ₹600.00 discount on HDFC Bank Credit Cards',
+    title: 'Discount on HDFC Bank Credit Cards',
     detail: '',
     count: '5 offers',
   },
@@ -332,7 +332,7 @@ export const replacementPolicy = {
 export const protectionPlan = {
   title: 'Protect+ with AppleCare Services for iPhone 17 Pro Max (1 Year) (Email Delivery, No Physical Kit)',
   shortTitle: '1 Year Protect+ with AppleCare Service by Apple',
-  price: 16999,
+  price: 0,
   seller: 'Service Lee Technologies Pvt. Ltd',
   note: 'Protect+ with AppleCare Services must be purchased with an applicable Apple product in the same Amazon order. This is a digital delivery only product, and no physical kit will be delivered.',
   benefits: [
@@ -602,7 +602,7 @@ export const topReviews: ReadonlyArray<TopReview> = [
 export const compareProducts = {
   columns: ['iPhone 17 Pro Max', 'iPhone 17 Pro', 'iPhone Air', 'iPhone 16 Pro Max'],
   rows: [
-    { label: 'PRICE', values: ['₹1,89,900.00', '₹1,54,900.00', '-20% ₹1,19,900.00 M.R.P.: ₹1,49,900.00', '₹99,900.00'] },
+    { label: 'PRICE', values: ['$100', '$100', '$100', '$100'] },
     { label: 'RATINGS', values: ['4.7 (654)', '4.5 (641)', '4.5 (395)', '4.7 (752)'] },
     { label: 'DISPLAY', values: ['6.9 in', '6.3 in', '6.5 in', '6.3 in'] },
     { label: 'CHIP', values: ['A19 Pro', 'A19 Pro', 'A19 Pro', 'A19'] },

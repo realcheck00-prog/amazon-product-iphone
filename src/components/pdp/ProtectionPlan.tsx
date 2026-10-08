@@ -1,6 +1,6 @@
 import { Check, Plus, ShieldCheck } from 'lucide-react'
 import { protectionPlan } from '@/data/product'
-import { formatINR } from '@/lib/format'
+import { formatUSD } from '@/lib/format'
 import { usePdp } from '@/state/pdp'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
@@ -22,7 +22,8 @@ export function ProtectionPlan() {
       <div className="space-y-3 p-4">
         <div className="rounded-md bg-surface-sunken p-3 ring-1 ring-line">
           <p className="text-sm font-medium text-ink">
-            {protectionPlan.shortTitle} for {formatINR(protectionPrice)}
+            {protectionPlan.shortTitle}
+            {protectionPrice > 0 && <> for {formatUSD(protectionPrice)}</>}
           </p>
           <p className="mt-1 text-xs leading-relaxed text-ink-3">
             from {protectionPlan.seller}

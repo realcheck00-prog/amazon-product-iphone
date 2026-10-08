@@ -1,6 +1,6 @@
 import { CreditCard } from 'lucide-react'
 import { price } from '@/data/product'
-import { formatINRShort } from '@/lib/format'
+import { formatUSDShort } from '@/lib/format'
 import { usePdp } from '@/state/pdp'
 
 export function EmiBlock() {
@@ -13,7 +13,7 @@ export function EmiBlock() {
         <CreditCard className="size-4 shrink-0" aria-hidden />
         {available ? (
           <>
-            EMI starts at {formatINRShort(price.emi.monthly)} per month.
+            EMI starts at {formatUSDShort(price.emi.monthly)} per month.
             {price.emi.noCostEmiAvailable && ' No Cost EMI available'}
           </>
         ) : (

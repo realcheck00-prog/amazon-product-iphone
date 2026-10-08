@@ -13,7 +13,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { fulfilment, product, storefront } from '@/data/product'
-import { formatINR } from '@/lib/format'
+import { formatUSD } from '@/lib/format'
 import { usePdp } from '@/state/pdp'
 import { Button } from '@/components/ui/Button'
 import { Chip } from '@/components/ui/Chip'
@@ -46,13 +46,13 @@ export function BuyBox() {
       <div className="space-y-2">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <span className="tnum text-price font-semibold text-price">
-            {canBuy ? formatINR(totalPrice) : '—'}
+            {canBuy ? formatUSD(totalPrice) : '—'}
           </span>
           <span className="text-xs text-ink-3">Inclusive of all taxes</span>
         </div>
         {canBuy && (
           <p className="tnum text-xs text-ink-3">
-            Subtotal <span className="font-semibold text-ink">{formatINR(totalPrice)}</span>
+            Subtotal <span className="font-semibold text-ink">{formatUSD(totalPrice)}</span>
           </p>
         )}
 
@@ -115,11 +115,15 @@ export function BuyBox() {
           </Chip>
         </div>
 
-        <div className="space-y-2 pt-1">
+        {/*
+          Below `lg` the purchase buttons live directly under the product
+          gallery (see <PurchaseActions />), so they are desktop-only here.
+        */}
+        <div className="hidden space-y-2 pt-1 lg:block">
           <Button block size="lg" disabled={!canBuy} onClick={addToCart}>
-            Add to cart
+            Add to Cart
           </Button>
-          <Button block size="lg" variant="secondary" disabled={!canBuy} onClick={addToCart}>
+          <Button block size="lg" variant="accent" disabled={!canBuy} onClick={addToCart}>
             Buy Now
           </Button>
         </div>
@@ -127,7 +131,7 @@ export function BuyBox() {
         {cartMessage && (
           <p
             role="status"
-            className="animate-fade-in flex items-start gap-1.5 rounded-md bg-[#e7f5f1] px-2.5 py-2 text-xs text-success"
+            className="animate-fade-in hidden items-start gap-1.5 rounded-md bg-[#e7f5f1] px-2.5 py-2 text-xs text-success lg:flex"
           >
             <Check className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             <span className="flex-1">{cartMessage}</span>

@@ -1,6 +1,6 @@
 import { Check } from 'lucide-react'
 import { variants } from '@/data/product'
-import { formatINR } from '@/lib/format'
+import { formatUSD } from '@/lib/format'
 import { usePdp, type SelectedConfiguration, type SelectedStorage } from '@/state/pdp'
 import { cn } from '@/lib/cn'
 
@@ -107,9 +107,9 @@ export function VariantSelector() {
                   )}
                 >
                   {option.name}
-                  {'price' in option && option.price !== undefined && (
+                  {'price' in option && option.price !== undefined && option.price > 0 && (
                     <span className="tnum ml-1.5 text-xs font-normal text-ink-3">
-                      +{formatINR(option.price)}
+                      +{formatUSD(option.price)}
                     </span>
                   )}
                 </button>

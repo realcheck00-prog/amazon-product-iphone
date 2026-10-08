@@ -42,7 +42,7 @@ export function ReviewsSection() {
             ))}
           </ul>
 
-          <div className="shrink-0 md:max-w-xs">
+          <div className="min-w-0 md:max-w-xs">
             <p className="text-xs leading-relaxed text-ink-3">
               To calculate the overall star rating and percentage breakdown by star, we don’t use a
               simple average. Instead, our system considers things like how recent a review is and

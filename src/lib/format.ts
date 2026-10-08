@@ -1,28 +1,28 @@
-const inrFormatter = new Intl.NumberFormat('en-IN', {
+const usdFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
-  currency: 'INR',
-  minimumFractionDigits: 2,
+  currency: 'USD',
+  minimumFractionDigits: 0,
   maximumFractionDigits: 2,
 })
 
-const inrWholeFormatter = new Intl.NumberFormat('en-IN', {
+const usdWholeFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
-  currency: 'INR',
+  currency: 'USD',
   minimumFractionDigits: 0,
   maximumFractionDigits: 0,
 })
 
-/** `142490` -> `₹1,42,490.00` (Indian digit grouping). */
-export function formatINR(value: number, withDecimals = true): string {
-  return withDecimals ? inrFormatter.format(value) : inrWholeFormatter.format(value)
+/** `100` -> `$100` */
+export function formatUSD(value: number, withDecimals = true): string {
+  return withDecimals ? usdFormatter.format(value) : usdWholeFormatter.format(value)
 }
 
-/** `4274` -> `₹4,274` */
-export function formatINRShort(value: number): string {
-  return inrWholeFormatter.format(value)
+/** `100` -> `$100` */
+export function formatUSDShort(value: number): string {
+  return usdWholeFormatter.format(value)
 }
 
-/** `6416.16` -> `₹6,416.16` */
-export function formatINRExact(value: number): string {
-  return inrFormatter.format(value)
+/** `100.5` -> `$100.50` */
+export function formatUSDExact(value: number): string {
+  return usdFormatter.format(value)
 }

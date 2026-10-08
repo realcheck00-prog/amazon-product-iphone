@@ -1,6 +1,6 @@
 import { Info } from 'lucide-react'
 import { price, protectionPlan, variants } from '@/data/product'
-import { formatINR } from '@/lib/format'
+import { formatUSD } from '@/lib/format'
 import { usePdp } from '@/state/pdp'
 
 const baseStorageName = variants.storages[0].name
@@ -21,11 +21,7 @@ export function PriceBlock() {
         </div>
       ) : (
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span className="tnum text-price font-semibold text-price">{formatINR(totalPrice)}</span>
-          <span className="tnum text-base text-ink-3 line-through decoration-ink-4/60">
-            M.R.P.: {formatINR(price.mrp)}
-          </span>
-          <span className="chip bg-[#fdecea] text-deal">-{price.dealBadge}%</span>
+          <span className="tnum text-price font-semibold text-price">{formatUSD(totalPrice)}</span>
         </div>
       )}
 
@@ -36,9 +32,9 @@ export function PriceBlock() {
             <Info className="size-3.5 text-ink-4" aria-label="Inclusive of all taxes" />
           </span>
         )}
-        {hasProtection && unitPrice !== null && (
+        {hasProtection && unitPrice !== null && protectionPlan.price > 0 && (
           <span className="tnum text-ink-3">
-            Includes {formatINR(protectionPlan.price)} Protect+ with AppleCare Services
+            Includes {formatUSD(protectionPlan.price)} Protect+ with AppleCare Services
           </span>
         )}
       </div>
