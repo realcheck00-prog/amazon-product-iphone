@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Check,
   ChevronDown,
@@ -15,6 +16,9 @@ import {
 import { fulfilment, product, storefront } from '@/data/product'
 import { formatUSD } from '@/lib/format'
 import { usePdp } from '@/state/pdp'
+import { useCart } from '@/state/cart'
+import { buildVariantLabel, makeBuyNowItem, makeCartItem } from '@/lib/catalog'
+import { setBuyNowItems } from '@/lib/buyNow'
 import { Button } from '@/components/ui/Button'
 import { Chip } from '@/components/ui/Chip'
 import { cn } from '@/lib/cn'
@@ -25,20 +29,34 @@ export function BuyBox() {
     setQuantity,
     totalPrice,
     storage,
-    addToCart,
     wishlisted,
     toggleWishlist,
-    cartMessage,
-    dismissCartMessage,
   } = usePdp()
+  const { addItem, cartMessage, dismissCartMessage, openCart } = useCart()
+  const navigate = useNavigate()
 
   const canBuy = totalPrice !== null
 
   useEffect(() => {
     if (!cartMessage) return
-    const t = window.setTimeout(dismissCartMessage, 4000)
+    const t = window.setTimeout(dismissCartMessage, 5000)
     return () => window.clearTimeout(t)
   }, [cartMessage, dismissCartMessage])
+
+  function handleAddToCart() {
+    if (totalPrice === null) return
+    addItem(
+      makeCartItem(buildVariantLabel(storage.name), Math.round(totalPrice * 100)),
+      quantity,
+    )
+  }
+
+  function handleBuyNow() {
+    if (totalPrice === null) return
+    const variant = buildVariantLabel(storage.name)
+    setBuyNowItems([makeBuyNowItem(variant, Math.round(totalPrice * 100), quantity)])
+    navigate('/checkout')
+  }
 
   return (
     <aside className="panel p-4 lg:sticky lg:top-[calc(2rem+3.5rem+2.75rem)]">
@@ -120,10 +138,10 @@ export function BuyBox() {
           gallery (see <PurchaseActions />), so they are desktop-only here.
         */}
         <div className="hidden space-y-2 pt-1 lg:block">
-          <Button block size="lg" disabled={!canBuy} onClick={addToCart}>
+          <Button block size="lg" disabled={!canBuy} onClick={handleAddToCart}>
             Add to Cart
           </Button>
-          <Button block size="lg" variant="accent" disabled={!canBuy} onClick={addToCart}>
+          <Button block size="lg" variant="accent" disabled={!canBuy} onClick={handleBuyNow}>
             Buy Now
           </Button>
         </div>
@@ -135,6 +153,13 @@ export function BuyBox() {
           >
             <Check className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             <span className="flex-1">{cartMessage}</span>
+            <button
+              type="button"
+              onClick={openCart}
+              className="shrink-0 font-semibold underline hover:text-success/80"
+            >
+              View cart
+            </button>
             <button
               type="button"
               onClick={dismissCartMessage}
@@ -203,7 +228,8 @@ export function BuyBox() {
 
       <p className="mt-3.5 border-t border-line-soft pt-3 text-2xs leading-relaxed text-ink-4">
         Selected variant: {product.brand} iPhone 17 Pro Max, {storage.name},{' '}
-        {product.color}. Demo interface — no order is placed and no payment is taken.
+        {product.color}. Demo interface — checkout uses a simulated payment and no real money is
+        charged.
       </p>
     </aside>
   )

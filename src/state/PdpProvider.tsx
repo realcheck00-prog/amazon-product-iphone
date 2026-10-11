@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { price, product, protectionPlan, variants } from '@/data/product'
+import { price, protectionPlan, variants } from '@/data/product'
 import {
   PdpContext,
   protectionPlanPrice,
@@ -16,14 +16,13 @@ export function PdpProvider({ children }: { children: ReactNode }) {
   const [configuration, setConfiguration] =
     useState<SelectedConfiguration>(initialConfiguration)
   const [quantity, setQuantityState] = useState(1)
-  const [cartCount, setCartCount] = useState(0)
   const [wishlisted, setWishlisted] = useState(false)
-  const [cartMessage, setCartMessage] = useState<string | null>(null)
 
   const hasProtection = configuration.name === 'With Apple Care'
 
   const unitPrice = storage.price
-  const totalPrice = unitPrice === null ? null : unitPrice + (hasProtection ? protectionPlanPrice : 0)
+  const totalPrice =
+    unitPrice === null ? null : unitPrice + (hasProtection ? protectionPlanPrice : 0)
 
   const savingsPercent = useMemo(() => {
     if (totalPrice === null) return price.dealBadge
@@ -32,12 +31,6 @@ export function PdpProvider({ children }: { children: ReactNode }) {
 
   function setQuantity(q: number) {
     setQuantityState(Math.min(10, Math.max(1, q)))
-  }
-
-  function addToCart() {
-    if (totalPrice === null) return
-    setCartCount((c) => c + quantity)
-    setCartMessage(`Added ${quantity} × ${product.brand} iPhone 17 Pro Max (${storage.name})`)
   }
 
   const value: PdpContextValue = {
@@ -52,12 +45,8 @@ export function PdpProvider({ children }: { children: ReactNode }) {
     totalPrice,
     protectionPrice: protectionPlan.price,
     savingsPercent,
-    cartCount,
-    addToCart,
     wishlisted,
     toggleWishlist: () => setWishlisted((w) => !w),
-    cartMessage,
-    dismissCartMessage: () => setCartMessage(null),
   }
 
   return <PdpContext.Provider value={value}>{children}</PdpContext.Provider>

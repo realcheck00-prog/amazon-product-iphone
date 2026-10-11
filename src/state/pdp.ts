@@ -19,13 +19,8 @@ export type PdpContextValue = {
   totalPrice: number | null
   protectionPrice: number
   savingsPercent: string
-  cartCount: number
-  addToCart: () => void
   wishlisted: boolean
   toggleWishlist: () => void
-  /** Announcement surfaced by the buy box after a cart action. */
-  cartMessage: string | null
-  dismissCartMessage: () => void
 }
 
 export const PdpContext = createContext<PdpContextValue | null>(null)

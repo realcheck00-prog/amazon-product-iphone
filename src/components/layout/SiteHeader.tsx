@@ -10,6 +10,7 @@ import {
   User,
 } from 'lucide-react'
 import { storefront } from '@/data/product'
+import { useCart } from '@/state/cart'
 
 const departments = [
   'All',
@@ -33,6 +34,7 @@ export function SiteHeader() {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('All')
   const [menuOpen, setMenuOpen] = useState(false)
+  const { count, openCart } = useCart()
 
   return (
     <header className="sticky top-0 z-40">
@@ -129,7 +131,7 @@ export function SiteHeader() {
           </form>
 
           <a
-            href="#cart"
+            href="#top"
             className="hidden shrink-0 items-center gap-1.5 px-2 text-sm hover:text-amber-400 lg:flex"
           >
             <span className="flex flex-col items-end leading-none">
@@ -137,13 +139,18 @@ export function SiteHeader() {
               <span className="text-xs text-white/70">Account &amp; Lists</span>
             </span>
           </a>
-          <a href="#cart" className="flex shrink-0 items-center gap-1.5 px-1.5 hover:text-amber-400">
-            <span className="flex flex-col items-center leading-none">
+          <button
+            type="button"
+            onClick={openCart}
+            aria-label={`Open cart, ${count} item${count === 1 ? '' : 's'}`}
+            className="flex shrink-0 items-center gap-1.5 px-1.5 hover:text-amber-400"
+          >
+            <span className="relative flex flex-col items-center leading-none">
               <ShoppingCart className="size-6" aria-hidden />
-              <span className="text-xs font-bold">0</span>
+              <span className="tnum text-xs font-bold">{count}</span>
             </span>
             <span className="hidden text-xs lg:inline">Cart</span>
-          </a>
+          </button>
         </div>
       </div>
 

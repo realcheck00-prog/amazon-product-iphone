@@ -1,5 +1,9 @@
+import { useNavigate } from 'react-router-dom'
 import { Check, X } from 'lucide-react'
 import { usePdp } from '@/state/pdp'
+import { useCart } from '@/state/cart'
+import { buildVariantLabel, makeBuyNowItem, makeCartItem } from '@/lib/catalog'
+import { setBuyNowItems } from '@/lib/buyNow'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 
@@ -9,8 +13,25 @@ import { cn } from '@/lib/cn'
  * sticky buy box.
  */
 export function PurchaseActions({ className }: { className?: string }) {
-  const { totalPrice, addToCart, cartMessage, dismissCartMessage } = usePdp()
+  const { totalPrice, quantity, storage } = usePdp()
+  const { addItem, cartMessage, dismissCartMessage, openCart } = useCart()
+  const navigate = useNavigate()
   const canBuy = totalPrice !== null
+
+  function handleAddToCart() {
+    if (totalPrice === null) return
+    addItem(
+      makeCartItem(buildVariantLabel(storage.name), Math.round(totalPrice * 100)),
+      quantity,
+    )
+  }
+
+  function handleBuyNow() {
+    if (totalPrice === null) return
+    const variant = buildVariantLabel(storage.name)
+    setBuyNowItems([makeBuyNowItem(variant, Math.round(totalPrice * 100), quantity)])
+    navigate('/checkout')
+  }
 
   return (
     <div className={cn('space-y-2', className)}>
@@ -20,7 +41,7 @@ export function PurchaseActions({ className }: { className?: string }) {
           size="md"
           className="min-h-11 px-3 py-3 text-sm sm:px-6 sm:text-base"
           disabled={!canBuy}
-          onClick={addToCart}
+          onClick={handleAddToCart}
         >
           Add to Cart
         </Button>
@@ -30,7 +51,7 @@ export function PurchaseActions({ className }: { className?: string }) {
           variant="accent"
           className="min-h-11 px-3 py-3 text-sm sm:px-6 sm:text-base"
           disabled={!canBuy}
-          onClick={addToCart}
+          onClick={handleBuyNow}
         >
           Buy Now
         </Button>
@@ -43,6 +64,13 @@ export function PurchaseActions({ className }: { className?: string }) {
         >
           <Check className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           <span className="flex-1">{cartMessage}</span>
+          <button
+            type="button"
+            onClick={openCart}
+            className="shrink-0 font-semibold underline hover:text-success/80"
+          >
+            View cart
+          </button>
           <button
             type="button"
             onClick={dismissCartMessage}

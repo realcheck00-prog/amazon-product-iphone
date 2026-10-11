@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type TouchEvent } from 'react'
 import { ChevronLeft, ChevronRight, Expand, RotateCw } from 'lucide-react'
 import { product } from '@/data/product'
+import { productImages } from '@/data/media'
 import { cn } from '@/lib/cn'
 
 type GalleryItem = {
@@ -8,18 +9,6 @@ type GalleryItem = {
   /** Accessible label; also shown as the tile overlay. */
   label: string
 }
-
-/**
- * Uploaded product photos in priority order — `/images/1.png` is the primary
- * image and the default on load; images 2–5 fill the thumbnail rail.
- */
-const productImages = [
-  '/images/1.png',
-  '/images/2.png',
-  '/images/3.png',
-  '/images/4.png',
-  '/images/5.png',
-]
 
 const media: GalleryItem[] = productImages.map((src, i) => ({
   src,
