@@ -18,7 +18,7 @@ import { formatUSD } from '@/lib/format'
 import { usePdp } from '@/state/pdp'
 import { useCart } from '@/state/cart'
 import { buildVariantLabel, makeBuyNowItem, makeCartItem } from '@/lib/catalog'
-import { setBuyNowItems } from '@/lib/buyNow'
+import { clearBuyNowItems, setBuyNowItems } from '@/lib/buyNow'
 import { Button } from '@/components/ui/Button'
 import { Chip } from '@/components/ui/Chip'
 import { cn } from '@/lib/cn'
@@ -49,6 +49,8 @@ export function BuyBox() {
       makeCartItem(buildVariantLabel(storage.name), Math.round(totalPrice * 100)),
       quantity,
     )
+    clearBuyNowItems()
+    navigate('/checkout')
   }
 
   function handleBuyNow() {

@@ -3,7 +3,7 @@ import { Check, X } from 'lucide-react'
 import { usePdp } from '@/state/pdp'
 import { useCart } from '@/state/cart'
 import { buildVariantLabel, makeBuyNowItem, makeCartItem } from '@/lib/catalog'
-import { setBuyNowItems } from '@/lib/buyNow'
+import { clearBuyNowItems, setBuyNowItems } from '@/lib/buyNow'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 
@@ -24,6 +24,8 @@ export function PurchaseActions({ className }: { className?: string }) {
       makeCartItem(buildVariantLabel(storage.name), Math.round(totalPrice * 100)),
       quantity,
     )
+    clearBuyNowItems()
+    navigate('/checkout')
   }
 
   function handleBuyNow() {
