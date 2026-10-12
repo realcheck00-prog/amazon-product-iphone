@@ -118,7 +118,7 @@ export function SiteHeader() {
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search Shopfront"
+              placeholder="Search amazon"
               className="min-w-0 flex-1 rounded-none border-0 bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-4 focus:outline-none"
             />
             <button

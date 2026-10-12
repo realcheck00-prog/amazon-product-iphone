@@ -12,7 +12,7 @@
 
 export const storefront = {
   /** Neutral demo identity. Not affiliated with or endorsed by Amazon. */
-  name: 'Shopfront',
+  name: 'amazon',
   tagline: 'Demo storefront — unaffiliated product page demo',
   market: 'amazon.in',
   deliverToPostalCode: '226003',

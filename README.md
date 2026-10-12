@@ -1,4 +1,4 @@
-# Shopfront — iPhone Pro Max demo storefront
+# amazon — iPhone Pro Max demo storefront
 
 A React + Vite + TypeScript + Tailwind CSS demo storefront with a complete,
 responsive guest checkout flow backed by Supabase (Postgres + Edge Functions).
