@@ -73,15 +73,28 @@ async function callFunction<T>(name: string, body: unknown): Promise<T> {
     )
   }
 
-  const response = await fetch(`${supabaseUrl}/functions/v1/${name}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: supabaseAnonKey,
-      Authorization: `Bearer ${supabaseAnonKey}`,
-    },
-    body: JSON.stringify(body),
-  })
+  const endpoint = `${supabaseUrl}/functions/v1/${name}`
+
+  let response: Response
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${supabaseAnonKey}`,
+      },
+      body: JSON.stringify(body),
+    })
+  } catch {
+    throw new Error(
+      `Could not reach the Supabase Edge Function at ${endpoint}. ` +
+        'This is a network-level failure, which usually means VITE_SUPABASE_URL is wrong or unreachable, ' +
+        'the function has not been deployed, or the request was blocked (offline, VPN, firewall or ad blocker). ' +
+        'Open your browser DevTools → Network tab, click "Continue to payment", and check whether this request is ' +
+        'pending, blocked (CORS) or failed.',
+    )
+  }
 
   const text = await response.text()
   let data: unknown = null

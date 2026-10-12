@@ -9,7 +9,7 @@ import {
   ShieldCheck,
   ShoppingBag,
 } from 'lucide-react'
-import { isSupabaseConfigured } from '@/lib/supabase'
+import { isSupabaseConfigured, supabaseConfigProblem } from '@/lib/supabase'
 import {
   createOrder,
   confirmDemoPayment,
@@ -220,10 +220,10 @@ export function CheckoutPage() {
           <div>
             <p className="font-semibold">Checkout backend is not configured</p>
             <p className="mt-0.5 leading-relaxed">
-              Set <code className="font-mono">VITE_SUPABASE_URL</code> and{' '}
-              <code className="font-mono">VITE_SUPABASE_ANON_KEY</code> and deploy the{' '}
-              <code className="font-mono">create-order</code> Edge Function. Until then, placing an
-              order will fail rather than report a false success.
+              {supabaseConfigProblem} Set <code className="font-mono">VITE_SUPABASE_URL</code> and{' '}
+              <code className="font-mono">VITE_SUPABASE_ANON_KEY</code> in a <code className="font-mono">.env</code>{' '}
+              file and deploy the <code className="font-mono">create-order</code> Edge Function. Until then, placing
+              an order will fail rather than report a false success.
             </p>
           </div>
         </div>
