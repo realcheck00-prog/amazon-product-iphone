@@ -13,7 +13,7 @@
 export const storefront = {
   /** Neutral demo identity. Not affiliated with or endorsed by Amazon. */
   name: 'amazon',
-  tagline: 'Demo storefront — unaffiliated product page demo',
+  tagline: 'Apple iPhone 17 Pro Max — product page',
   market: 'amazon.in',
   deliverToPostalCode: '226003',
   deliverToCity: 'Lucknow',

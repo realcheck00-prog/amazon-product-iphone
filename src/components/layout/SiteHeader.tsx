@@ -90,9 +90,6 @@ export function SiteHeader() {
             className="flex shrink-0 items-baseline gap-1.5 px-1 text-lg font-bold tracking-tight md:text-xl"
           >
             <span>{storefront.name}</span>
-            <span className="rounded-xs bg-amber-300 px-1 py-px text-[0.5625rem] font-semibold tracking-wide text-ink uppercase">
-              Demo
-            </span>
           </a>
 
           <form

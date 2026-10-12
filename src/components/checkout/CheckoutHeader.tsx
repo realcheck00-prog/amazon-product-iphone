@@ -14,9 +14,6 @@ export function CheckoutHeader() {
             aria-label={`${storefront.name} home`}
           >
             <span>{storefront.name}</span>
-            <span className="rounded-xs bg-amber-300 px-1 py-px text-[0.5625rem] font-semibold tracking-wide text-ink uppercase">
-              Demo
-            </span>
           </Link>
           <h1 className="hidden border-l border-white/20 pl-4 text-lg font-medium text-white/90 md:block">
             Checkout

@@ -75,8 +75,7 @@ export function OrderSummary({
       <p className="mt-3 flex items-start gap-1.5 border-t border-line-soft pt-3 text-2xs leading-relaxed text-ink-3">
         <Lock className="mt-0.5 size-3.5 shrink-0 text-ink-4" aria-hidden />
         <span>
-          Shipping and taxes are not configured for this demo store, so they are shown as
-          $0.00. Free delivery is applied to this order.
+          Shipping and taxes are shown as $0.00 — free delivery is applied to this order.
         </span>
       </p>
     </section>

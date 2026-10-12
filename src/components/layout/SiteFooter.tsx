@@ -49,13 +49,6 @@ export function SiteFooter() {
         </div>
 
         <div className="flex flex-col gap-3 pt-6 text-[0.6875rem] sm:flex-row sm:items-center sm:justify-between">
-          <p className="max-w-2xl leading-relaxed">
-            <strong className="font-semibold text-white">Demo interface.</strong> This page is an
-            unaffiliated front-end demonstration. {storefront.name} is not affiliated with, endorsed
-            by, or connected to Amazon.com or Amazon India. Product names, brands and marks belong to
-            their respective owners, and all listed prices, offers and seller details are static
-            sample data.
-          </p>
           <ul className="flex shrink-0 items-center gap-3">
             <li className="flex items-center gap-1.5">
               <Lock className="size-3.5" aria-hidden /> Secure payments

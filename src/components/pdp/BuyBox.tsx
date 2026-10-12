@@ -230,8 +230,7 @@ export function BuyBox() {
 
       <p className="mt-3.5 border-t border-line-soft pt-3 text-2xs leading-relaxed text-ink-4">
         Selected variant: {product.brand} iPhone 17 Pro Max, {storage.name},{' '}
-        {product.color}. Demo interface — checkout uses a simulated payment and no real money is
-        charged.
+        {product.color}.
       </p>
     </aside>
   )
