@@ -139,27 +139,33 @@ export function CheckoutPage() {
     setBillingNotice(null)
     setSubmitting(true)
     try {
-      const created = await createOrder({
-        idempotencyKey: idempotencyRef.current,
-        customer: {
-          fullName: values.fullName.trim(),
-          email: values.email.trim(),
-          phone: values.phone.trim(),
-        },
-        shipping: {
-          line1: values.line1.trim(),
-          line2: values.line2.trim(),
-          city: values.city.trim(),
-          region: values.region.trim(),
-          postalCode: values.postalCode.trim(),
-          country: values.country.trim(),
-        },
-        items: checkoutItems.map((item) => ({
-          productId: item.productId,
-          variant: item.variant,
-          quantity: item.quantity,
-        })),
-      })
+      // Retry-safe: if an order already exists for this checkout attempt,
+      // reuse it instead of creating a second one. (The server-side
+      // idempotency key would return the same order anyway — this just makes
+      // it explicit and skips an extra round trip.)
+      const created =
+        order ??
+        (await createOrder({
+          idempotencyKey: idempotencyRef.current,
+          customer: {
+            fullName: values.fullName.trim(),
+            email: values.email.trim(),
+            phone: values.phone.trim(),
+          },
+          shipping: {
+            line1: values.line1.trim(),
+            line2: values.line2.trim(),
+            city: values.city.trim(),
+            region: values.region.trim(),
+            postalCode: values.postalCode.trim(),
+            country: values.country.trim(),
+          },
+          items: checkoutItems.map((item) => ({
+            productId: item.productId,
+            variant: item.variant,
+            quantity: item.quantity,
+          })),
+        }))
       rememberOrderToken(created.orderNumber, created.accessToken)
       setOrder(created)
 
