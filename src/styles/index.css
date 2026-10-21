@@ -233,6 +233,17 @@
     background-color: var(--color-amber-500);
   }
 
+  /* Blue primary action for the payment form (iOS-inspired, not an Apple dialog). */
+  .btn-pay {
+    background-color: #007aff;
+    color: #ffffff;
+    box-shadow: 0 1px 3px rgb(0 60 160 / 0.28);
+  }
+
+  .btn-pay:hover:not(:disabled) {
+    background-color: #0071e3;
+  }
+
   .btn-outline {
     background-color: var(--color-surface);
     color: var(--color-link);

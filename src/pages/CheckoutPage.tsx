@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { AlertTriangle, BadgeCheck, Loader2, ShoppingBag } from 'lucide-react'
+import { AlertTriangle, BadgeCheck, Loader2, Lock, ShoppingBag } from 'lucide-react'
 import { isSupabaseConfigured, supabaseConfigProblem } from '@/lib/supabase'
 import {
   createOrder,
@@ -16,6 +16,13 @@ import {
   type CheckoutField,
   type CheckoutFormValues,
 } from '@/lib/validation'
+import {
+  emptyPaymentCard,
+  validatePaymentCard,
+  type PaymentCardErrors,
+  type PaymentCardField,
+  type PaymentCardForm,
+} from '@/lib/paymentCard'
 import { formatCents } from '@/lib/format'
 import { getBuyNowItems, clearBuyNowItems } from '@/lib/buyNow'
 import { useCart } from '@/state/cart'
@@ -23,6 +30,7 @@ import { Button } from '@/components/ui/Button'
 import { Panel } from '@/components/ui/Panel'
 import { CheckoutHeader } from '@/components/checkout/CheckoutHeader'
 import { FormField } from '@/components/checkout/FormField'
+import { PaymentDetailsForm } from '@/components/checkout/PaymentDetailsForm'
 import { OrderSummary, type SummaryItem } from '@/components/checkout/OrderSummary'
 
 function newIdempotencyKey(): string {
@@ -45,6 +53,8 @@ export function CheckoutPage() {
 
   const [values, setValues] = useState<CheckoutFormValues>(emptyCheckoutForm)
   const [errors, setErrors] = useState<CheckoutErrors>({})
+  const [card, setCard] = useState<PaymentCardForm>(emptyPaymentCard)
+  const [cardErrors, setCardErrors] = useState<PaymentCardErrors>({})
   const [submitting, setSubmitting] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
   const [order, setOrder] = useState<OrderRecord | null>(null)
@@ -86,16 +96,36 @@ export function CheckoutPage() {
     setErrors((current) => ({ ...current, [field]: next[field] }))
   }
 
+  function updateCardField(field: PaymentCardField, value: string) {
+    setCard((current) => ({ ...current, [field]: value }))
+    setCardErrors((current) => {
+      if (!current[field]) return current
+      const next = { ...current }
+      delete next[field]
+      return next
+    })
+  }
+
+  function handleCardBlur(field: PaymentCardField) {
+    const next = validatePaymentCard(card)
+    setCardErrors((current) => ({ ...current, [field]: next[field] }))
+  }
+
   async function handleContinue(event: FormEvent) {
     event.preventDefault()
     if (submitting) return
     setServerError(null)
 
     const nextErrors = validateCheckout(values)
+    const nextCardErrors = validatePaymentCard(card)
     setErrors(nextErrors)
-    if (hasErrors(nextErrors)) {
-      const first = Object.keys(nextErrors)[0]
-      document.getElementById(first)?.focus()
+    setCardErrors(nextCardErrors)
+    if (hasErrors(nextErrors) || Object.keys(nextCardErrors).length > 0) {
+      const firstInvalid = [
+        ...Object.keys(nextErrors),
+        ...Object.keys(nextCardErrors),
+      ][0]
+      document.getElementById(firstInvalid)?.focus()
       return
     }
 
@@ -125,8 +155,9 @@ export function CheckoutPage() {
       rememberOrderToken(created.orderNumber, created.accessToken)
       setOrder(created)
 
-      // No payment step: demo payment is confirmed immediately on submit.
-      // A real integration would send the customer to the provider instead.
+      // No payment provider is configured: the demo payment is confirmed
+      // immediately on submit. Card details are never sent anywhere — a real
+      // integration would send the customer to the provider instead.
       const confirmed = await confirmDemoPayment(
         created.orderNumber,
         created.accessToken,
@@ -135,6 +166,9 @@ export function CheckoutPage() {
       setOrder(confirmed)
 
       if (confirmed.paymentStatus === 'paid' && confirmed.orderStatus === 'confirmed') {
+        // Card details are never transmitted, stored or logged — drop them
+        // from memory now that they are no longer needed.
+        setCard(emptyPaymentCard)
         if (source === 'cart') clear()
         clearBuyNowItems()
         navigate(`/order-success?order=${encodeURIComponent(confirmed.orderNumber)}`, {
@@ -298,6 +332,14 @@ export function CheckoutPage() {
               </div>
             </Panel>
 
+            <PaymentDetailsForm
+              values={card}
+              errors={cardErrors}
+              onChange={updateCardField}
+              onBlur={handleCardBlur}
+              disabled={submitting}
+            />
+
             {serverError && (
               <p
                 role="alert"
@@ -314,9 +356,19 @@ export function CheckoutPage() {
                 <br />
                 Total due now: <span className="tnum font-semibold text-ink">{formatCents(totalCents)}</span>
               </p>
-              <Button type="submit" size="lg" variant="primary" disabled={submitting}>
-                {submitting && <Loader2 className="size-4 animate-spin" aria-hidden />}
-                {submitting ? 'Placing your order…' : 'Continue to payment'}
+              <Button
+                type="submit"
+                size="lg"
+                variant="primary"
+                className="btn-pay"
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
+                ) : (
+                  <Lock className="size-4" aria-hidden />
+                )}
+                {submitting ? 'Processing payment…' : `Pay ${formatCents(totalCents)}`}
               </Button>
             </div>
           </form>

@@ -145,9 +145,11 @@ No real payment provider is configured in this repository. Checkout runs in
 
 - The order is created with `order_status = pending_payment` and
   `payment_status = pending`.
-- The payment step is clearly labelled **DEMO** and explains that no card data
-  is collected and no money is charged.
-- Clicking **Pay (demo)** calls `confirm-demo-payment`, which is the **only**
+- The payment step is an iOS-inspired **Payment Details** card form (name,
+  number, MM/YY, CVV, US ZIP) with brand detection and inline validation.
+  Card values are checked in the browser only, cleared after a successful
+  order, and **no money is charged**.
+- Clicking **Pay $100.00** calls `confirm-demo-payment`, which is the **only**
   code path that sets `payment_status = paid` / `order_status = confirmed`.
 - **Simulate failed payment** sets `payment_status = failed` while leaving the
   order `pending_payment`, so it can be retried safely.
@@ -164,8 +166,11 @@ No real payment provider is configured in this repository. Checkout runs in
    only after verified confirmation, updates `payment_status = paid` /
    `order_status = confirmed`.
 
-No raw card numbers, CVVs or banking credentials are collected or stored
-anywhere in the current code.
+No payment provider is integrated, so the card form is client-side only:
+raw card numbers and CVVs are never sent to Supabase or any other server,
+never stored, never logged, and are dropped from memory once the order is
+confirmed. Real card entry must not be used until a provider (see above) is
+integrated.
 
 ---
 
@@ -192,12 +197,14 @@ See §9 of the implementation requirements. Manual verification:
 2. **Add to Cart** updates the header count and opens the cart drawer; the cart
    persists across reloads; quantities can change and items can be removed.
 3. **Proceed to Checkout** from the cart includes the correct product/quantity.
-4. Empty/invalid form fields show inline errors and block submission.
+4. Empty/invalid form fields show inline errors and block submission —
+   including the card fields (brand-aware number length + Luhn, MM/YY not in
+   the past, 3- or 4-digit CVV, 5-digit ZIP).
 5. The displayed price is exactly **$100.00**.
 6. Changing a client price in dev tools does not change the server total.
 7. Orders and order items appear in the `orders` / `order_items` tables.
 8. Stopping the Edge Function / breaking the DB shows an error, not success.
-9. Double-clicking **Continue to payment** creates a single order.
+9. Double-clicking **Pay $100.00** creates a single order.
 10. **Simulate failed payment** leaves the order unpaid and retryable.
 11. The green tick appears only after a successful server confirmation.
 12. Layouts work at mobile (< 640px), tablet (~768px) and desktop (≥ 1024px).
