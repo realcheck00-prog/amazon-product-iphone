@@ -124,7 +124,8 @@ If **either** is missing, nothing appears in the table:
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| UI says *"Your billing details were NOT saved: Requested function was not found"* | `save-billing-details` is not deployed | `supabase functions deploy save-billing-details` |
+| UI says *"Your billing details were NOT saved: Could not reach the Supabase Edge Function … save-billing-details"* (DevTools shows a CORS / `TypeError: Failed to fetch`) | `save-billing-details` is not deployed. The gateway's 404 for a missing function lacks CORS headers, so the browser hides the real `NOT_FOUND` response and reports a network error. | `supabase functions deploy save-billing-details` |
+| UI says *"Your billing details were NOT saved: Requested function was not found"* (seen outside the browser, e.g. curl) | same as above | `supabase functions deploy save-billing-details` |
 | UI says *"…relation \"public.payment_billing_details\" does not exist"* (or PGRST205) | the second migration was never run | run `supabase/migrations/20261021000000_payment_billing_details.sql` in the SQL Editor |
 
 Both are required. The table has RLS enabled with no policies and its anon

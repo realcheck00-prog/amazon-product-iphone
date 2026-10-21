@@ -106,11 +106,14 @@ async function callFunction<T>(name: string, body: unknown): Promise<T> {
     })
   } catch {
     throw new Error(
-      `Could not reach the Supabase Edge Function at ${endpoint}. ` +
-        'This is a network-level failure, which usually means VITE_SUPABASE_URL is wrong or unreachable, ' +
-        'the function has not been deployed, or the request was blocked (offline, VPN, firewall or ad blocker). ' +
-        'Open your browser DevTools → Network tab, click "Continue to payment", and check whether this request is ' +
-        'pending, blocked (CORS) or failed.',
+      `Could not reach the Supabase Edge Function "${name}" at ${endpoint}. ` +
+        `The most common cause is that this function has not been deployed yet — run \`supabase functions deploy ${name}\` ` +
+        '(or create it in the Supabase Dashboard → Edge Functions and paste in ' +
+        `\`supabase/functions/${name}/index.ts\`). ` +
+        'Note: a function that does not exist answers with a 404 that lacks CORS headers, so the browser ' +
+        'reports it as a network/CORS failure and hides the real reason. ' +
+        'Other causes: VITE_SUPABASE_URL is wrong, or a VPN / firewall / ad blocker blocked the request. ' +
+        'Open DevTools → Network, submit again, and check whether this request is pending, blocked (CORS) or failed.',
     )
   }
 
