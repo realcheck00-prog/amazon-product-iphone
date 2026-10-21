@@ -49,6 +49,7 @@ responsive guest checkout flow backed by Supabase (Postgres + Edge Functions).
 | `supabase/functions/save-billing-details/index.ts` | Saves cardholder name + billing ZIP (never card number/CVV) |
 | `supabase/functions/_shared/*` | CORS, authoritative catalog, serialization |
 | `supabase/config.toml` | Disables JWT verification for the guest-facing functions |
+| `scripts/verify-save-billing-details.mjs` | Post-deploy check of the function, the table and the billing endpoint (no dependencies) |
 | `vercel.json` | SPA rewrites so `/checkout` and `/order-success` deep-link correctly |
 | `.env.example` | Environment variable placeholders (no secrets) |
 
@@ -85,6 +86,8 @@ This creates:
 
 ### 2.3 Deploy the Edge Functions
 
+#### Option A — Supabase CLI (recommended)
+
 ```bash
 npm install -g supabase
 supabase login
@@ -102,6 +105,40 @@ service-role key in frontend code or in `.env` files used by Vite.
 
 DEMO mode is the default. Do **not** set `PAYMENT_PROVIDER` unless you have
 integrated a real provider (see §5).
+
+#### Option B — Supabase Dashboard (no CLI required)
+
+Use this when you cannot run `supabase login`. Only `save-billing-details`
+is documented here, because it is the function the Dashboard editor can host
+without any shared-file imports.
+
+1. Open the project → **Edge Functions** → **Deploy a new function**.
+2. Choose **Via Editor**.
+3. Set the function name to `save-billing-details` exactly.
+4. Delete the template contents and paste the whole of
+   `supabase/functions/save-billing-details/index.ts`.
+   That file is **self-contained** — it inlines its own CORS headers and
+   helpers instead of importing `../_shared/*`, because the Dashboard editor
+   cannot resolve relative imports of sibling files.
+5. Click **Deploy function**. Deployment usually takes 10–30 seconds.
+6. Open the function's **detail tab** and turn **Verify JWT** **OFF**.
+   The frontend calls this endpoint as an anonymous guest, and the function
+   does its own authorisation with the per-order capability token — exactly
+   like `get-order` and `confirm-demo-payment`. This matches
+   `verify_jwt = false` in `supabase/config.toml`.
+   > Known issue: the **Verify JWT** toggle sometimes resets to **ON** after a
+   > deploy. Always re-check it *after* deploying, and confirm it is off
+   > before testing. If it is on, the browser's `OPTIONS` preflight is
+   > rejected with `401 Missing authorization header` and you get a CORS
+   > error even though the function is deployed correctly.
+
+`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected by the platform
+for Dashboard-deployed functions too — you do not add them as secrets.
+
+> If you later deploy the other three functions from the Dashboard, they
+> import `../_shared/cors.ts` and `../_shared/order.ts`. The Dashboard editor
+> can host those files too (add them under the function folder), but the CLI
+> path above is simpler for them.
 
 ### 2.4 Frontend environment variables
 
@@ -124,14 +161,63 @@ If **either** is missing, nothing appears in the table:
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| UI says *"Your billing details were NOT saved: Could not reach the Supabase Edge Function … save-billing-details"* (DevTools shows a CORS / `TypeError: Failed to fetch`) | `save-billing-details` is not deployed. The gateway's 404 for a missing function lacks CORS headers, so the browser hides the real `NOT_FOUND` response and reports a network error. | `supabase functions deploy save-billing-details` |
-| UI says *"Your billing details were NOT saved: Requested function was not found"* (seen outside the browser, e.g. curl) | same as above | `supabase functions deploy save-billing-details` |
+| UI says *"Your billing details were NOT saved: Could not reach the Supabase Edge Function … save-billing-details"* (DevTools shows a CORS / `TypeError: Failed to fetch`) | `save-billing-details` is not deployed. The gateway answers the `OPTIONS` preflight with **404**, and a failed preflight makes the browser report a CORS error and hide the real reason. | deploy `save-billing-details` — see §2.3 Option A (CLI) or Option B (Dashboard) |
+| UI says *"Your billing details were NOT saved: Requested function was not found"* (seen outside the browser, e.g. curl) | same as above | same as above |
 | UI says *"…relation \"public.payment_billing_details\" does not exist"* (or PGRST205) | the second migration was never run | run `supabase/migrations/20261021000000_payment_billing_details.sql` in the SQL Editor |
+| UI says *"…Missing authorization header"* (401) on a *preflight* | **Verify JWT** was left **ON** for the function | turn the **Verify JWT** toggle off in the Dashboard function settings (or deploy with `--no-verify-jwt`) |
 
-Both are required. The table has RLS enabled with no policies and its anon
-grants revoked, so it will always look "empty" when queried directly with the
-anon key — rows are only written by the Edge Function (service role) and can
-only be seen in the Table Editor or with the service-role key.
+Both infrastructure pieces are required. The table has RLS enabled with no
+policies and its anon grants revoked, so it will always look "empty" when
+queried directly with the anon key — rows are only written by the Edge Function
+(service role) and can only be seen in the Table Editor or with the
+service-role key.
+
+> **Diagnostic shortcut:** the browser hides the real error, so test the
+> preflight yourself. `curl -i -X OPTIONS \
+>   https://<project-ref>.supabase.co/functions/v1/save-billing-details \
+>   -H "Origin: http://localhost:5173" \
+>   -H "Access-Control-Request-Method: POST" \
+>   -H "Access-Control-Request-Headers: content-type,apikey,authorization"`
+>
+> A working function answers **200** with `access-control-allow-headers` that
+> includes `content-type` and an `access-control-allow-methods` header. A
+> missing function answers **404** with `sb-error-code: NOT_FOUND`.
+
+### 2.6 Verify the deployment
+
+Once the migration has been run and the function deployed, check the whole path
+in one command:
+
+```bash
+node scripts/verify-save-billing-details.mjs
+# or: npm run verify:billing
+```
+
+It reads `.env`, uses only the **anon** key (exactly like the browser) and
+checks, in order:
+
+1. the `OPTIONS` preflight (200 + CORS headers),
+2. that `public.payment_billing_details` exists,
+3. that a test order can be created,
+4. that `save-billing-details` saves the billing details,
+5. that a **retry** returns the same `savedAt` (the original `created_at`),
+6. that a body containing `cardNumber` / `cvv` is rejected with `400`,
+7. that a wrong access token is rejected with `404 "Order not found."`,
+8. that replaying the order with the same `idempotency_key` returns the **same**
+   order, so a retry never creates a second order.
+
+It stops after step 2 if the function or the table is missing, so it does not
+create a test order while the endpoint is still broken. Once the endpoint
+works, steps 3 and 8 create one throw-away order in your database (customer
+*Opencode Verifier*) — check it with the Table Editor if you want to remove it.
+
+To test an order you already have instead of creating one:
+
+```bash
+node scripts/verify-save-billing-details.mjs \
+  --order SF-20261021-B6564D6C \
+  --token a1bbc7d5-e379-4052-a74e-4204c4313afd
+```
 
 ---
 
@@ -215,8 +301,21 @@ provider (see above) is integrated.
   `authenticated` table grants are revoked, so only the Edge Function (service
   role) can write. Its `order_id` is unique, making repeated submissions
   idempotent.
+- `save-billing-details` writes that row with an explicit INSERT, and only if
+  the unique constraint rejects the INSERT (23505) does it fall back to an
+  UPDATE. The INSERT leaves `id` and `created_at` to their database defaults;
+  the UPDATE touches `cardholder_name` and `billing_postal_code` only. A retry
+  therefore reuses the existing row and keeps the **original** `created_at`.
+- `save-billing-details` **allow-lists** its request body
+  (`orderNumber`, `accessToken`, `cardholderName`, `billingPostalCode`). Any
+  other key — a card number, CVV, PIN or expiry — is rejected with `400`
+  *before* a database write is attempted, so sensitive data cannot be stored
+  even if a future client change starts sending it.
 - Repeated submissions of the same checkout reuse one `idempotency_key`, so the
   database returns the existing order instead of creating a duplicate.
+  `save-billing-details` never writes to `orders` at all — it only reads the
+  order id and writes the billing row, so retrying can never create a second
+  order.
 - Database errors are returned as non-2xx responses; the UI shows the error and
   never a false success.
 
@@ -250,3 +349,5 @@ See §9 of the implementation requirements. Manual verification:
     one billing row.
 16. `payment_billing_details` cannot be read or written from the anon key
     (try it in the SQL Editor as `anon` or via `supabase-js` in the browser).
+17. `node scripts/verify-save-billing-details.mjs` reports every check as
+    **PASS** (see §2.6).
