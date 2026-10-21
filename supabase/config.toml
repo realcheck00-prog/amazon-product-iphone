@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.confirm-demo-payment]
 verify_jwt = false
+
+[functions.save-billing-details]
+verify_jwt = false

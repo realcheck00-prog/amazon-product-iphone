@@ -5,6 +5,7 @@ import { isSupabaseConfigured, supabaseConfigProblem } from '@/lib/supabase'
 import {
   createOrder,
   confirmDemoPayment,
+  saveBillingDetails,
   type OrderRecord,
 } from '@/lib/orders'
 import { rememberOrderToken } from '@/lib/orderAccess'
@@ -30,7 +31,7 @@ import { Button } from '@/components/ui/Button'
 import { Panel } from '@/components/ui/Panel'
 import { CheckoutHeader } from '@/components/checkout/CheckoutHeader'
 import { FormField } from '@/components/checkout/FormField'
-import { PaymentDetailsForm } from '@/components/checkout/PaymentDetailsForm'
+import { PaymentDetailsForm, type PaymentNotice } from '@/components/checkout/PaymentDetailsForm'
 import { OrderSummary, type SummaryItem } from '@/components/checkout/OrderSummary'
 
 function newIdempotencyKey(): string {
@@ -57,6 +58,7 @@ export function CheckoutPage() {
   const [cardErrors, setCardErrors] = useState<PaymentCardErrors>({})
   const [submitting, setSubmitting] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
+  const [billingNotice, setBillingNotice] = useState<PaymentNotice | null>(null)
   const [order, setOrder] = useState<OrderRecord | null>(null)
   const idempotencyRef = useRef<string>(newIdempotencyKey())
 
@@ -129,6 +131,12 @@ export function CheckoutPage() {
       return
     }
 
+    // Snapshot the only two card fields we are allowed to persist. The card
+    // number, expiry and CVV never leave this component's state.
+    const cardholderName = card.cardholderName.trim()
+    const billingPostalCode = card.billingZip.trim()
+
+    setBillingNotice(null)
     setSubmitting(true)
     try {
       const created = await createOrder({
@@ -155,9 +163,30 @@ export function CheckoutPage() {
       rememberOrderToken(created.orderNumber, created.accessToken)
       setOrder(created)
 
+      // Persist only non-sensitive billing metadata (name + ZIP + timestamp).
+      // A failure here is reported but never blocks or fakes a payment.
+      setBillingNotice({ tone: 'info', message: 'Saving your billing details…' })
+      try {
+        await saveBillingDetails({
+          orderNumber: created.orderNumber,
+          accessToken: created.accessToken,
+          cardholderName,
+          billingPostalCode,
+        })
+        setBillingNotice({
+          tone: 'success',
+          message: 'Billing details saved with your order. This is not a payment confirmation.',
+        })
+      } catch {
+        setBillingNotice({
+          tone: 'error',
+          message: 'We could not save your billing details, but you can still complete your order.',
+        })
+      }
+
       // No payment provider is configured: the demo payment is confirmed
-      // immediately on submit. Card details are never sent anywhere — a real
-      // integration would send the customer to the provider instead.
+      // immediately on submit. Card numbers, expiry and CVVs are never sent
+      // anywhere — a real integration would send the customer to the provider.
       const confirmed = await confirmDemoPayment(
         created.orderNumber,
         created.accessToken,
@@ -338,6 +367,7 @@ export function CheckoutPage() {
               onChange={updateCardField}
               onBlur={handleCardBlur}
               disabled={submitting}
+              notice={billingNotice}
             />
 
             {serverError && (

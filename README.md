@@ -33,7 +33,8 @@ responsive guest checkout flow backed by Supabase (Postgres + Edge Functions).
 | `src/pages/CheckoutPage.tsx` | Checkout with two-column responsive layout |
 | `src/pages/OrderSuccessPage.tsx` | Success / pending screen |
 | `src/components/cart/CartDrawer.tsx` | Slide-over cart with qty + remove |
-| `src/components/checkout/*` | Header, form field, order summary |
+| `src/components/checkout/*` | Header, form field, order summary, payment-details form |
+| `src/lib/paymentCard.ts` | Card brand detection, MM/YY + CVV + ZIP formatting/validation (client-only) |
 | `src/App.tsx` | Router (`/`, `/checkout`, `/order-success`) |
 
 ### Backend (Supabase)
@@ -41,9 +42,11 @@ responsive guest checkout flow backed by Supabase (Postgres + Edge Functions).
 | File | Purpose |
 | --- | --- |
 | `supabase/migrations/20260101000000_init_checkout.sql` | Tables, indexes, constraints, RLS, atomic order-creation RPC |
+| `supabase/migrations/20261021000000_payment_billing_details.sql` | Non-sensitive billing metadata table (name + ZIP + timestamp), RLS |
 | `supabase/functions/create-order/index.ts` | Trusted order creation (server-side pricing + idempotency) |
 | `supabase/functions/get-order/index.ts` | Capability-token order lookup |
 | `supabase/functions/confirm-demo-payment/index.ts` | DEMO payment confirmation (only writer of `paid`/`confirmed`) |
+| `supabase/functions/save-billing-details/index.ts` | Saves cardholder name + billing ZIP (never card number/CVV) |
 | `supabase/functions/_shared/*` | CORS, authoritative catalog, serialization |
 | `supabase/config.toml` | Disables JWT verification for the guest-facing functions |
 | `vercel.json` | SPA rewrites so `/checkout` and `/order-success` deep-link correctly |
@@ -58,10 +61,13 @@ responsive guest checkout flow backed by Supabase (Postgres + Edge Functions).
 1. Create a project at <https://supabase.com/dashboard>.
 2. Note the **Project URL** and **publishable/anon key** (Project Settings → API).
 
-### 2.2 Run the SQL migration
+### 2.2 Run the SQL migrations
 
-Open **SQL Editor → New query**, paste the contents of
-`supabase/migrations/20260101000000_init_checkout.sql`, and run it.
+Open **SQL Editor → New query**, paste the contents of each file in
+`supabase/migrations/` (in filename order), and run it:
+
+1. `20260101000000_init_checkout.sql`
+2. `20261021000000_payment_billing_details.sql`
 
 This creates:
 
@@ -87,6 +93,7 @@ supabase link --project-ref <your-project-ref>
 supabase functions deploy create-order
 supabase functions deploy get-order
 supabase functions deploy confirm-demo-payment
+supabase functions deploy save-billing-details
 ```
 
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected automatically into
@@ -147,8 +154,12 @@ No real payment provider is configured in this repository. Checkout runs in
   `payment_status = pending`.
 - The payment step is an iOS-inspired **Payment Details** card form (name,
   number, MM/YY, CVV, US ZIP) with brand detection and inline validation.
-  Card values are checked in the browser only, cleared after a successful
-  order, and **no money is charged**.
+  Card number, expiry and CVV are checked in the browser only, cleared after a
+  successful order, and **no money is charged**.
+- On submit, only the **cardholder name**, **billing ZIP** and a server-side
+  **submission timestamp** are saved, via `save-billing-details` into
+  `payment_billing_details`. The UI shows a saving/success/error message for
+  this step; it is explicitly **not** a payment confirmation.
 - Clicking **Pay $100.00** calls `confirm-demo-payment`, which is the **only**
   code path that sets `payment_status = paid` / `order_status = confirmed`.
 - **Simulate failed payment** sets `payment_status = failed` while leaving the
@@ -167,10 +178,11 @@ No real payment provider is configured in this repository. Checkout runs in
    `order_status = confirmed`.
 
 No payment provider is integrated, so the card form is client-side only:
-raw card numbers and CVVs are never sent to Supabase or any other server,
-never stored, never logged, and are dropped from memory once the order is
-confirmed. Real card entry must not be used until a provider (see above) is
-integrated.
+raw card numbers, CVVs and PINs are never sent to Supabase or any other
+server, never stored, never logged, and are dropped from memory once the
+order is confirmed. The only persisted fields are cardholder name, billing
+ZIP and the submission timestamp. Real card entry must not be used until a
+provider (see above) is integrated.
 
 ---
 
@@ -181,7 +193,12 @@ integrated.
 - RLS denies all anonymous/authenticated direct table access.
 - Guests are not required to create an Auth account.
 - Order lookup requires the per-order opaque **capability token** returned once
-  at creation (`get-order` / `confirm-demo-payment`).
+  at creation (`get-order` / `confirm-demo-payment` / `save-billing-details`).
+- `payment_billing_details` holds only cardholder name, billing ZIP and a
+  timestamp. RLS is enabled with **no policies**, and the `anon` /
+  `authenticated` table grants are revoked, so only the Edge Function (service
+  role) can write. Its `order_id` is unique, making repeated submissions
+  idempotent.
 - Repeated submissions of the same checkout reuse one `idempotency_key`, so the
   database returns the existing order instead of creating a duplicate.
 - Database errors are returned as non-2xx responses; the UI shows the error and
@@ -209,3 +226,11 @@ See §9 of the implementation requirements. Manual verification:
 11. The green tick appears only after a successful server confirmation.
 12. Layouts work at mobile (< 640px), tablet (~768px) and desktop (≥ 1024px).
 13. `npm run build` passes.
+14. After checkout, `payment_billing_details` contains one row per order with
+    **only** the cardholder name, billing ZIP and timestamp — and no card
+    number, CVV, expiry or PIN.
+15. The payment form shows “Saving your billing details…” then a success or
+    error message; double-clicking **Pay $100.00** still creates one order and
+    one billing row.
+16. `payment_billing_details` cannot be read or written from the anon key
+    (try it in the SQL Editor as `anon` or via `supabase-js` in the browser).

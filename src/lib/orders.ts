@@ -58,6 +58,18 @@ export type CreateOrderInput = {
   items: CheckoutLineInput[]
 }
 
+export type SaveBillingDetailsInput = {
+  orderNumber: string
+  accessToken: string
+  cardholderName: string
+  billingPostalCode: string
+}
+
+export type SaveBillingDetailsResult = {
+  ok: boolean
+  savedAt?: string
+}
+
 function readError(data: unknown, status: number): string {
   if (data && typeof data === 'object' && 'error' in data) {
     const value = (data as { error?: unknown }).error
@@ -118,6 +130,19 @@ export function createOrder(input: CreateOrderInput): Promise<OrderRecord> {
 /** Fetches an order using its capability token. Used to verify before success. */
 export function getOrder(orderNumber: string, accessToken: string): Promise<OrderRecord> {
   return callFunction<OrderRecord>('get-order', { orderNumber, accessToken })
+}
+
+/**
+ * Persists the non-sensitive billing metadata from the payment-details form
+ * (cardholder name + billing ZIP + server-side timestamp).
+ *
+ * SECURITY: only those two fields may ever be passed in. Card numbers, CVVs
+ * and PINs must never be sent to Supabase or any other server.
+ */
+export function saveBillingDetails(
+  input: SaveBillingDetailsInput,
+): Promise<SaveBillingDetailsResult> {
+  return callFunction<SaveBillingDetailsResult>('save-billing-details', input)
 }
 
 /**

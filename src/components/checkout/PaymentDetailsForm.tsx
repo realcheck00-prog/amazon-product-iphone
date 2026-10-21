@@ -1,5 +1,13 @@
 import type { ReactNode } from 'react'
-import { AlertCircle, CreditCard, Lock, ShieldCheck } from 'lucide-react'
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  CreditCard,
+  Loader2,
+  Lock,
+  ShieldCheck,
+} from 'lucide-react'
 import { cn } from '@/lib/cn'
 import {
   cardBrandLabels,
@@ -14,12 +22,19 @@ import {
   type PaymentCardForm,
 } from '@/lib/paymentCard'
 
+/** Inline submission feedback for the billing-details save step. */
+export type PaymentNotice = {
+  tone: 'info' | 'success' | 'error'
+  message: string
+}
+
 export type PaymentDetailsFormProps = {
   values: PaymentCardForm
   errors: PaymentCardErrors
   onChange: (field: PaymentCardField, value: string) => void
   onBlur: (field: PaymentCardField) => void
   disabled?: boolean
+  notice?: PaymentNotice | null
 }
 
 const paymentMode = import.meta.env.VITE_PAYMENT_MODE ?? 'demo'
@@ -72,8 +87,9 @@ function Field({ id, label, error, hint, className, children }: FieldProps) {
  * iOS-inspired card-details section for the US market: brand detection,
  * MM/YY + CVV formatting, five-digit ZIP validation and accessible errors.
  *
- * Card values are held in React state only — they are never sent to a server,
- * stored, or logged (the project has no payment provider configured).
+ * SECURITY: card number, expiry and CVV live in React state only — they are
+ * never sent to a server, stored, or logged. On submit, only the cardholder
+ * name and billing ZIP are persisted (see `saveBillingDetails`).
  */
 export function PaymentDetailsForm({
   values,
@@ -81,6 +97,7 @@ export function PaymentDetailsForm({
   onChange,
   onBlur,
   disabled = false,
+  notice = null,
 }: PaymentDetailsFormProps) {
   const brand = detectCardBrand(values.cardNumber)
   const cvvLength = expectedCvvLength(brand)
@@ -251,6 +268,27 @@ export function PaymentDetailsForm({
           />
         </Field>
 
+        {notice ? (
+          <p
+            role={notice.tone === 'error' ? 'alert' : 'status'}
+            className={cn(
+              'flex items-start gap-2 rounded-xl px-3 py-2.5 text-xs font-medium leading-relaxed',
+              notice.tone === 'info' && 'bg-surface-sunken text-ink-3',
+              notice.tone === 'success' && 'bg-[#e9f6ef] text-success',
+              notice.tone === 'error' && 'bg-[#fdecea] text-deal',
+            )}
+          >
+            {notice.tone === 'info' ? (
+              <Loader2 className="mt-0.5 size-3.5 shrink-0 animate-spin" aria-hidden />
+            ) : notice.tone === 'success' ? (
+              <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            ) : (
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            )}
+            <span>{notice.message}</span>
+          </p>
+        ) : null}
+
         <div className="space-y-2 border-t border-[#ececef] pt-3">
           <p className="text-2xs text-ink-4">
             All amounts are charged in US Dollars (USD).
@@ -258,8 +296,9 @@ export function PaymentDetailsForm({
           <p className="flex items-start gap-2 rounded-xl bg-surface-sunken px-3 py-2.5 text-2xs leading-relaxed text-ink-3">
             <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-[#0b63d6]" aria-hidden />
             <span>
-              Card details are checked in this browser only — they are never sent to a
-              server, stored, or logged.
+              Card number, expiry and CVV are checked in this browser only — they are
+              never sent to a server, stored, or logged. Only your cardholder name and
+              billing ZIP are saved with the order.
               {paymentMode === 'demo' ? ' This is a demo checkout, so no real charge is made.' : ''}
             </span>
           </p>
