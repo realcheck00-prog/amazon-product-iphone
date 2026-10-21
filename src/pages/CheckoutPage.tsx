@@ -164,24 +164,31 @@ export function CheckoutPage() {
       setOrder(created)
 
       // Persist only non-sensitive billing metadata (name + ZIP + timestamp).
-      // A failure here is reported but never blocks or fakes a payment.
+      // Success is shown ONLY after the server confirms the insert. If the
+      // save fails we stop here so the error stays on screen instead of being
+      // wiped by navigation. Retrying is safe: the idempotency key reuses the
+      // same order and the table's unique order_id upserts in place.
       setBillingNotice({ tone: 'info', message: 'Saving your billing details…' })
       try {
-        await saveBillingDetails({
+        const saved = await saveBillingDetails({
           orderNumber: created.orderNumber,
           accessToken: created.accessToken,
           cardholderName,
           billingPostalCode,
         })
+        if (!saved.ok) throw new Error('The server did not confirm the save.')
         setBillingNotice({
           tone: 'success',
           message: 'Billing details saved with your order. This is not a payment confirmation.',
         })
-      } catch {
+      } catch (error) {
         setBillingNotice({
           tone: 'error',
-          message: 'We could not save your billing details, but you can still complete your order.',
+          message: `Your billing details were NOT saved: ${
+            error instanceof Error ? error.message : 'unknown error'
+          } Fix the cause and press Pay again — no duplicate order will be created.`,
         })
+        return
       }
 
       // No payment provider is configured: the demo payment is confirmed

@@ -70,8 +70,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .maybeSingle()
 
   if (error) {
+    // Surface the database message (never any secret) so a failed insert is
+    // diagnosable from the UI during development.
     console.error('save-billing-details lookup failed', error)
-    return json({ error: 'We could not load your order.' }, 500)
+    return json({ error: `We could not load your order. ${error.message}`.trim() }, 500)
   }
   if (!order) return json({ error: 'Order not found.' }, 404)
 
@@ -89,8 +91,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .single()
 
   if (saveError || !saved) {
+    // Surface the database message (never any secret) so a failed insert is
+    // diagnosable from the UI during development.
     console.error('save-billing-details upsert failed', saveError)
-    return json({ error: 'We could not save your billing details.' }, 500)
+    return json(
+      { error: `We could not save your billing details. ${saveError?.message ?? ''}`.trim() },
+      500,
+    )
   }
 
   // Nothing sensitive is echoed back — only the submission timestamp.

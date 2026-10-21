@@ -117,6 +117,21 @@ VITE_SUPABASE_ANON_KEY=your-publishable-or-anon-key
 VITE_PAYMENT_MODE=demo
 ```
 
+### 2.5 Troubleshooting: form submissions missing in Supabase
+
+The checkout writes billing metadata through two pieces of infrastructure.
+If **either** is missing, nothing appears in the table:
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| UI says *"Your billing details were NOT saved: Requested function was not found"* | `save-billing-details` is not deployed | `supabase functions deploy save-billing-details` |
+| UI says *"…relation \"public.payment_billing_details\" does not exist"* (or PGRST205) | the second migration was never run | run `supabase/migrations/20261021000000_payment_billing_details.sql` in the SQL Editor |
+
+Both are required. The table has RLS enabled with no policies and its anon
+grants revoked, so it will always look "empty" when queried directly with the
+anon key — rows are only written by the Edge Function (service role) and can
+only be seen in the Table Editor or with the service-role key.
+
 ---
 
 ## 3. Local development

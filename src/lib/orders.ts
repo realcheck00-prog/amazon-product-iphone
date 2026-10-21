@@ -75,6 +75,12 @@ function readError(data: unknown, status: number): string {
     const value = (data as { error?: unknown }).error
     if (typeof value === 'string' && value.trim()) return value
   }
+  // Supabase gateway and PostgREST failures use `message` rather than `error`
+  // (e.g. a function that is not deployed, or a missing table).
+  if (data && typeof data === 'object' && 'message' in data) {
+    const value = (data as { message?: unknown }).message
+    if (typeof value === 'string' && value.trim()) return value
+  }
   return `Request failed (${status})`
 }
 
