@@ -202,8 +202,8 @@ export function CheckoutPage() {
       rememberSubmittedSummary(reference, {
         phone: record.phone,
         username: record.username,
-        userId: record.external_user_id,
-        validUntil: record.connection_valid_until,
+        userId: record.user_id,
+        validUntil: record.connection_expiry,
       })
 
       // A local copy for the customer's own device. It is generated in the
@@ -220,9 +220,9 @@ export function CheckoutPage() {
           email: record.email,
           phone: record.phone,
           username: record.username,
-          userId: record.external_user_id,
+          userId: record.user_id,
           confirmationCode: record.confirmation_code,
-          validUntil: record.connection_valid_until,
+          validUntil: record.connection_expiry,
         })
       } catch {
         // The record is saved; only the local copy failed.
@@ -257,6 +257,16 @@ export function CheckoutPage() {
       clearBuyNowItems()
       navigate(`/order-success?ref=${encodeURIComponent(reference)}`, { replace: true })
     } catch (error) {
+      if (import.meta.env.DEV) {
+        const source =
+          typeof error === 'object' && error !== null
+            ? (error as { code?: unknown; message?: unknown })
+            : null
+        console.error('[onboarding] insert failed', {
+          code: typeof source?.code === 'string' ? source.code : '',
+          message: typeof source?.message === 'string' ? source.message.slice(0, 500) : '',
+        })
+      }
       setServerError(describeSubmissionError(error))
       setOnboardingNotice(null)
     } finally {

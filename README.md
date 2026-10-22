@@ -71,18 +71,18 @@ Open **SQL Editor → New query**, paste the whole of
 `db/customer_onboarding.sql`, and click **Run**. The file is idempotent, so
 running it twice is safe. If the project already has an older
 `customer_onboarding` table from an earlier draft, the same file upgrades it in
-place: it adds `external_user_id` / `connection_valid_until` / `updated_at`,
-drops the obsolete `connection_period` column, and rewrites the constraints,
-grants and policy. If older rows have no account identifiers, the script stops
-with a message naming the row count: fill or delete those rows in the Table
-Editor, then run it again.
+place: it adds the four account-identifier columns if they are missing and
+rewrites the constraints, grants and policy. It does not drop existing columns.
+If older rows have no account identifiers, the script stops with a message
+naming the row count: fill or delete those rows in the Table Editor, then run
+it again.
 
 It creates:
 
 - `public.customer_onboarding` — one row per onboarding request. It stores the
   nine contact/address fields plus the four account details the customer
-  already holds: `username`, `external_user_id`, `confirmation_code` and
-  `connection_valid_until`.
+  already holds: `username`, `user_id`, `confirmation_code` and
+  `connection_expiry`.
 - CHECK constraints that mirror the browser rules, so a hand-crafted request
   cannot store a shape the form would not produce. The identifiers are `text`,
   not numbers, so `007` keeps its leading zeros and letter casing survives.
@@ -137,12 +137,23 @@ Each probe that tries to write is designed to fail, so nothing is inserted. If
 a probe unexpectedly succeeds, the script prints the row id and the `delete`
 statement to clean it up.
 
+To also verify one real, successful insert, run:
+
+```bash
+node scripts/verify-onboarding.mjs --write
+# or: npm run verify:onboarding -- --write
+```
+
+That inserts one clearly-marked verification row. The browser key has no
+`DELETE` privilege, so the script prints the exact `delete` statement to run as
+the project owner.
+
 ### 2.5 Troubleshooting
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | `PGRST205` / "relation public.customer_onboarding does not exist" | the SQL was never run | run `db/customer_onboarding.sql` in the SQL Editor |
-| `PGRST204` / "Could not find the 'connection_valid_until' column" | the live table comes from an earlier draft | re-run the current `db/customer_onboarding.sql`; section 1b upgrades it in place |
+| `PGRST204` / "Could not find the 'user_id' or 'connection_expiry' column" | the payload uses a column the live table does not have | align the payload in `src/lib/onboarding.ts` with the live schema, then re-run `db/customer_onboarding.sql` for the grants and policy |
 | `401` / `403` / `42501` on insert | the column grant is missing, or the policy was dropped | re-run the grants/policy block in `db/customer_onboarding.sql` |
 | "Onboarding backend is not configured" banner | `.env` is missing or still has placeholders | set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`, restart `npm run dev` |
 | Insert returns `23505` | the username or user ID is already registered | check the details the customer was given |
@@ -244,7 +255,7 @@ as the project owner:
 
 ```sql
 select id, full_name, email, phone,
-       username, external_user_id, confirmation_code, connection_valid_until,
+       username, user_id, confirmation_code, connection_expiry,
        created_at
 from public.customer_onboarding
 order by created_at desc;
@@ -287,7 +298,7 @@ confirmation screen can offer the download again.
 Defence in depth:
 
 1. **Grants** — `revoke all` removes Supabase's default access, then
-   `grant insert (id, …, connection_valid_until)` allow-lists exactly the 14
+   `grant insert (id, …, connection_expiry)` allow-lists exactly the 14
    columns the form submits.
 2. **RLS** — the insert policy applies only to the `anon` role, and the CHECK
    constraints below validate every submitted value.
@@ -298,8 +309,8 @@ Defence in depth:
 4. **No read path** — there is no `SELECT` policy, and the insert avoids
    `RETURNING` via `Prefer: return=minimal`, so a customer can never read
    another customer's row.
-5. **Uniqueness** — `username` (case-insensitively) and `external_user_id` are
-   unique, so a duplicate submission is rejected with `23505`.
+5. **Uniqueness** — `username` (case-insensitively) and `user_id` are unique,
+   so a duplicate submission is rejected with `23505`.
 
 `force row level security` is deliberately **not** used: the table owner
 (`postgres`) and `service_role` keep their read/update path for support work.

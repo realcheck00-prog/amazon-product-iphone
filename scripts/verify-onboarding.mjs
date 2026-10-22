@@ -82,11 +82,10 @@ const REQUIRED_COLUMNS = [
   'postal_code',
   'country',
   'username',
-  'external_user_id',
+  'user_id',
   'confirmation_code',
-  'connection_valid_until',
+  'connection_expiry',
   'created_at',
-  'updated_at',
 ]
 
 /** A fixed, obviously-fake reference so a probe can be found and deleted. */
@@ -103,9 +102,9 @@ const PROBE_ROW = {
   postal_code: '00000',
   country: 'United States',
   username: 'verification-probe',
-  external_user_id: 'PROBE000000000000000',
+  user_id: 'PROBE000000000000000',
   confirmation_code: '007',
-  connection_valid_until: '11/2030',
+  connection_expiry: '11/2030',
 }
 
 // ------------------------------------------------------------------- output
@@ -239,9 +238,9 @@ if (!tableExists) {
 // row is created; a constraint error (23514) proves the INSERT privilege and
 // policy are in place, while a permission error would prove they are not.
 const INVALID_PROBES = [
-  ['connection_valid_until', '13/2030', 'the expiry must be a real MM/YYYY month'],
+  ['connection_expiry', '13/2030', 'the expiry must be a real MM/YYYY month'],
   ['confirmation_code', '12', 'the confirmation code must be exactly 3 digits'],
-  ['external_user_id', 'abc-123', 'the user ID must be 1–20 alphanumeric characters'],
+  ['user_id', 'abc-123', 'the user ID must be 1–20 alphanumeric characters'],
   ['username', '', 'the username must not be empty'],
 ]
 
@@ -258,7 +257,9 @@ if (tableExists) {
     } else if (isPermissionDenied(res)) {
       bad(
         'anon cannot insert at all',
-        'grant insert (id, full_name, ...) on public.customer_onboarding to anon',
+        /row-level security/i.test(res.text)
+          ? 'an INSERT policy for anon is missing or restrictive; run db/customer_onboarding.sql'
+          : 'grant insert (id, full_name, ...) on public.customer_onboarding to anon',
       )
     } else if (res.ok) {
       bad(`the database accepted an invalid "${column}"`, 'the CHECK constraint is missing')
@@ -270,8 +271,46 @@ if (tableExists) {
   }
 }
 
-// --------------------------------------------------- 5. the old write path
-section('5. the old team-only assignment function is gone')
+// ------------------------------------- 5. an optional real insert
+//
+// The probes above prove the INSERT reaches Postgres and is accepted by RLS,
+// because a CHECK constraint rejects them. Pass --write to also insert one
+// complete, clearly-marked row. That row is not deleted automatically (anon has
+// no DELETE privilege), so the cleanup statement is printed.
+section('5. a complete row can actually be inserted (optional --write)')
+if (process.argv.includes('--write') && tableExists) {
+  const res = await request(`${TABLE}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify(PROBE_ROW),
+  })
+
+  if (res.ok) {
+    ok('a complete onboarding row was inserted')
+    console.log(`        clean it up in the SQL Editor:`)
+    console.log(`        delete from public.customer_onboarding where id = '${PROBE_ID}';`)
+  } else if (res.code === '23505') {
+    ok('a complete onboarding row was inserted earlier', 'probe id already exists')
+    console.log(`        clean it up in the SQL Editor:`)
+    console.log(`        delete from public.customer_onboarding where id = '${PROBE_ID}';`)
+  } else if (isPermissionDenied(res)) {
+    bad(
+      'a complete row is refused',
+      /row-level security/i.test(res.text)
+        ? `RLS policy denied the insert (HTTP ${res.status}); run db/customer_onboarding.sql`
+        : `column grant denied the insert (HTTP ${res.status})`,
+    )
+  } else {
+    bad('a complete row could not be inserted', `HTTP ${res.status} ${res.text.slice(0, 160)}`)
+  }
+} else if (!tableExists) {
+  note('skipped: the table does not exist yet')
+} else {
+  note('skipped: pass --write to insert one verification row')
+}
+
+// --------------------------------------------------- 6. the old write path
+section('6. the old team-only assignment function is gone')
 {
   const res = await request('rpc/assign_customer_onboarding', {
     method: 'POST',
@@ -279,7 +318,7 @@ section('5. the old team-only assignment function is gone')
     body: JSON.stringify({
       p_id: PROBE_ID,
       p_username: 'probe',
-      p_external_user_id: 'A'.repeat(20),
+      p_user_id: 'A'.repeat(20),
       p_confirmation_code: '007',
     }),
   })

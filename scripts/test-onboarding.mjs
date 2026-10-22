@@ -203,15 +203,15 @@ check('the row contains exactly the columns the browser may write', () => {
     'address_line_2',
     'city',
     'confirmation_code',
-    'connection_valid_until',
+    'connection_expiry',
     'country',
     'email',
-    'external_user_id',
     'full_name',
     'id',
     'phone',
     'postal_code',
     'state_region',
+    'user_id',
     'username',
   ])
 })
@@ -231,9 +231,9 @@ check('the values are trimmed and the email is lower-cased', () => {
 
 check('the account identifiers are stored as entered', () => {
   assert.equal(record.username, 'alexmorgan')
-  assert.equal(record.external_user_id, '0012AbCd')
+  assert.equal(record.user_id, '0012AbCd')
   assert.equal(record.confirmation_code, '007')
-  assert.equal(record.connection_valid_until, '11/2030')
+  assert.equal(record.connection_expiry, '11/2030')
 })
 
 check('phone numbers and postal codes are never rewritten', () => {

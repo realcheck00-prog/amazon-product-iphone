@@ -142,9 +142,9 @@ export type OnboardingRecord = {
   postal_code: string
   country: string
   username: string
-  external_user_id: string
+  user_id: string
   confirmation_code: string
-  connection_valid_until: string
+  connection_expiry: string
 }
 
 /** Everything the browser knows about a submission. */
@@ -193,9 +193,9 @@ export function buildOnboardingRecord(input: OnboardingRecordInput): OnboardingR
     postal_code: input.postalCode.trim(),
     country: input.country.trim(),
     username: input.username.trim(),
-    external_user_id: input.userId.trim(),
+    user_id: input.userId.trim(),
     confirmation_code: input.confirmationCode.trim(),
-    connection_valid_until: normalizeExpiry(input.connectionExpiresOn),
+    connection_expiry: normalizeExpiry(input.connectionExpiresOn),
   }
 }
 
