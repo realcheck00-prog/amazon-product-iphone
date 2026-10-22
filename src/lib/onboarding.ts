@@ -1,87 +1,135 @@
 /**
- * Customer onboarding: the connection-period rules and the row that is written
- * to the `public.customer_onboarding` table.
+ * Customer onboarding: the account-detail rules and the row that is written to
+ * the `public.customer_onboarding` table.
  *
  * This module is deliberately dependency-free — it imports nothing — so the
  * rules can be unit-tested without a browser, a bundler or a Supabase client.
  *
- * There is NO card handling anywhere in this module, and there never will be:
- * there is no card number, expiry, CVV, PIN or card-validation rule in this
- * file. The onboarding flow takes no payment and collects no credential of any
- * kind.
+ * The customer already has their username, user ID and confirmation code from
+ * our team. This form collects those existing values; it never generates them.
  *
- * The username, the 20-character user ID and the 3-digit confirmation code are
- * assigned later by the support team over the phone. They are NOT asked for
- * here, they are NOT sent by the browser, and the database rejects any
- * attempt to set them from the public API.
+ * There is NO card handling anywhere in this module: there is no card number,
+ * expiry, CVV, PIN or card-validation rule in this file. The onboarding flow
+ * takes no payment and collects no credential of any kind.
  */
 
 export type OnboardingValues = {
-  /** How long the customer wants the connection for, e.g. `18 months`. */
-  connectionPeriod: string
+  /** The username the team gave the customer. */
+  username: string
+  /** The 20-character alphanumeric user ID the team gave the customer. */
+  userId: string
+  /** The 3-digit confirmation code the team gave the customer. */
+  confirmationCode: string
+  /** The last month the connection is valid, as `MM/YYYY`. */
+  connectionExpiresOn: string
 }
 
 export type OnboardingField = keyof OnboardingValues
 export type OnboardingErrors = Partial<Record<OnboardingField, string>>
 
 export const emptyOnboarding: OnboardingValues = {
-  connectionPeriod: '',
+  username: '',
+  userId: '',
+  confirmationCode: '',
+  connectionExpiresOn: '',
 }
 
 /**
- * The shape the database enforces for the connection period: a positive number
- * of months or years, e.g. `18 months`, `2 years`, `1 month`. A bare `0` is
- * rejected — a connection cannot run for zero months.
+ * The database shape of the confirmation code: exactly three digits.
  */
-export const CONNECTION_PERIOD_RE = /^[1-9][0-9]{0,2} (month|months|year|years)$/
+export const CONFIRMATION_CODE_RE = /^[0-9]{3}$/
+
+/** The user ID is an identifier, not a number: up to 20 letters or digits. */
+export const USER_ID_RE = /^[A-Za-z0-9]{1,20}$/
 
 /**
- * Normalises the connection period.
+ * The expiry is a calendar month, not a duration: `MM/YYYY` with a four-digit
+ * year. It is stored as text, never as a `Date` or a timestamp.
+ */
+export const EXPIRY_RE = /^(0[1-9]|1[0-2])\/[0-9]{4}$/
+
+/** Maximum length of the username, matching the database CHECK constraint. */
+export const USERNAME_MAX_LENGTH = 64
+
+/**
+ * Normalises the expiry to `MM/YYYY`.
  *
- * `18 MONTHS` becomes `18 months`, `18month` becomes `18 months` and
- * `1 months` becomes `1 month`. Anything that is not a number with a unit is
- * returned unchanged so the validation message can point at it.
+ * `112030` becomes `11/2030`, and `11 / 2030` becomes `11/2030`. Anything that
+ * is not six digits (with an optional slash) is returned trimmed, so the
+ * validation message can point at it.
  */
-export function normalizeConnectionPeriod(value: string): string {
-  const cleaned = value.trim().toLowerCase().replace(/\s+/g, ' ')
-  const match = /^([0-9]{1,3})\s*(month|months|year|years)?$/.exec(cleaned)
-  if (!match) return cleaned
+export function normalizeExpiry(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
 
-  const amount = Number(match[1])
-  const unit = match[2]
-  if (!unit || amount === 0) return cleaned
+  const slash = trimmed.indexOf('/')
+  if (slash >= 0) {
+    const rawMonth = trimmed.slice(0, slash).replace(/\D/g, '').slice(0, 2)
+    const year = trimmed.slice(slash + 1).replace(/\D/g, '').slice(0, 4)
+    const month = rawMonth.length === 1 ? `0${rawMonth}` : rawMonth
+    if (!month && !year) return ''
+    return year ? `${month}/${year}` : month
+  }
 
-  const singular = unit.startsWith('month') ? 'month' : 'year'
-  return `${amount} ${amount === 1 ? singular : `${singular}s`}`
+  const digits = trimmed.replace(/\D/g, '')
+  if (!digits) return ''
+  if (digits.length <= 2) return digits
+  return `${digits.slice(0, 2)}/${digits.slice(2, 6)}`
+}
+
+/** Keeps the confirmation code numeric and at most three digits while typing. */
+export function normalizeConfirmationCode(value: string): string {
+  return value.replace(/\D/g, '').slice(0, 3)
+}
+
+/** Keeps the user ID alphanumeric and at most 20 characters while typing. */
+export function normalizeUserId(value: string): string {
+  return value.replace(/[^A-Za-z0-9]/g, '').slice(0, 20)
 }
 
 /**
- * Client-side validation. The database enforces the same rule with a CHECK
- * constraint — this only exists to give immediate, accessible feedback.
+ * Client-side validation. The database enforces the same rules with CHECK
+ * constraints — this only exists to give immediate, accessible feedback.
+ *
+ * The username and user ID are identifiers, not credentials: case and leading
+ * zeros are preserved exactly as entered.
  */
 export function validateOnboarding(values: OnboardingValues): OnboardingErrors {
   const errors: OnboardingErrors = {}
 
-  const period = normalizeConnectionPeriod(values.connectionPeriod)
-  if (!period) {
-    errors.connectionPeriod = 'Enter the connection period, for example 18 months.'
-  } else if (!CONNECTION_PERIOD_RE.test(period)) {
-    errors.connectionPeriod =
-      'Enter the connection period as a number of months or years, for example 18 months.'
+  const username = values.username.trim()
+  if (!username) {
+    errors.username = 'Enter the username provided by our team.'
+  } else if (username.length > USERNAME_MAX_LENGTH) {
+    errors.username = `The username must be ${USERNAME_MAX_LENGTH} characters or fewer.`
+  }
+
+  const userId = values.userId.trim()
+  if (!userId) {
+    errors.userId = 'Enter the user ID provided by our team.'
+  } else if (!USER_ID_RE.test(userId)) {
+    errors.userId = 'Enter up to 20 letters or digits. Leading zeros and letter casing are kept.'
+  }
+
+  const code = values.confirmationCode.trim()
+  if (!code) {
+    errors.confirmationCode = 'Enter the 3-digit confirmation code provided by our team.'
+  } else if (!CONFIRMATION_CODE_RE.test(code)) {
+    errors.confirmationCode = 'Enter exactly 3 digits, for example 007.'
+  }
+
+  const expiry = normalizeExpiry(values.connectionExpiresOn)
+  if (!expiry) {
+    errors.connectionExpiresOn = 'Enter the last valid month and year, for example 11/2030.'
+  } else if (!EXPIRY_RE.test(expiry)) {
+    errors.connectionExpiresOn =
+      'Use MM/YYYY with a month from 01 to 12 and a four-digit year, for example 11/2030.'
   }
 
   return errors
 }
 
-/**
- * The columns of `public.customer_onboarding` that the browser writes.
- *
- * The team-assigned columns are deliberately absent rather than `null`: a
- * PostgREST insert names every key in the payload as a target column, and the
- * browser has no INSERT privilege on `username`, `external_user_id` or
- * `confirmation_code`. Leaving them out lets the database default them to NULL,
- * which the row-level security insert policy also requires.
- */
+/** The columns of `public.customer_onboarding` that the browser writes. */
 export type OnboardingRecord = {
   id: string
   full_name: string
@@ -93,7 +141,10 @@ export type OnboardingRecord = {
   state_region: string
   postal_code: string
   country: string
-  connection_period: string
+  username: string
+  external_user_id: string
+  confirmation_code: string
+  connection_valid_until: string
 }
 
 /** Everything the browser knows about a submission. */
@@ -109,20 +160,23 @@ export type OnboardingRecordInput = {
   stateRegion: string
   postalCode: string
   country: string
-  connectionPeriod: string
+  username: string
+  userId: string
+  confirmationCode: string
+  connectionExpiresOn: string
 }
 
 /**
  * Builds the row that is inserted into `public.customer_onboarding`.
  *
  * The result is an allow-list: exactly the columns the browser may write, and
- * nothing else. The three team-assigned columns are not included at all — the
- * database defaults them to NULL, and the browser has no column privilege for
- * them.
+ * nothing else. No card, bank or credential column exists in the row type, so
+ * one can never be sent.
  *
- * Only the email address is rewritten (trimmed and lower-cased). Phone
- * numbers, postal codes and every other value are trimmed and otherwise left
- * exactly as the customer typed them.
+ * Only the email address is rewritten (trimmed and lower-cased). Usernames,
+ * user IDs, confirmation codes, phone numbers, postal codes and the expiry are
+ * trimmed and otherwise left exactly as the customer entered them — leading
+ * zeros and letter casing included.
  */
 export function buildOnboardingRecord(input: OnboardingRecordInput): OnboardingRecord {
   const addressLine2 = input.addressLine2.trim()
@@ -138,11 +192,14 @@ export function buildOnboardingRecord(input: OnboardingRecordInput): OnboardingR
     state_region: input.stateRegion.trim(),
     postal_code: input.postalCode.trim(),
     country: input.country.trim(),
-    connection_period: normalizeConnectionPeriod(input.connectionPeriod),
+    username: input.username.trim(),
+    external_user_id: input.userId.trim(),
+    confirmation_code: input.confirmationCode.trim(),
+    connection_valid_until: normalizeExpiry(input.connectionExpiresOn),
   }
 }
 
-/** Generates the reference the customer quotes when they call us. */
+/** Generates the reference the customer quotes when they contact us. */
 export function newOnboardingReference(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
@@ -165,7 +222,7 @@ export function describeSubmissionError(error: unknown): string {
 
   switch (code) {
     case '23505':
-      return 'This request was already submitted, so we kept the first copy.'
+      return 'That username or user ID is already registered. Check the details our team gave you.'
     case '23502':
       return 'One of the required details is missing. Please check the form and try again.'
     case '23514':
@@ -179,41 +236,74 @@ export function describeSubmissionError(error: unknown): string {
   }
 }
 
-const CONTACT_KEY = 'shopfront.onboardingContact.v1'
+/** What the confirmation screen shows about the submission. */
+export type SubmittedSummary = {
+  phone: string
+  username: string
+  userId: string
+  validUntil: string
+}
+
+const SUMMARY_KEY = 'shopfront.onboardingSummary.v1'
 
 /**
- * Remembers the phone number the customer gave us for this session, so the
- * confirmation screen can show what we will call. Session-only: nothing is
- * written to disk and nothing is shared with another browser.
+ * Remembers the submitted details for this session, so the confirmation screen
+ * can show them without reading the database (the browser has no SELECT
+ * privilege). Session-only: nothing is written to disk and nothing is shared
+ * with another browser.
  */
-export function rememberSubmittedContact(reference: string, phone: string): void {
+export function rememberSubmittedSummary(reference: string, summary: SubmittedSummary): void {
   try {
-    const raw = window.sessionStorage.getItem(CONTACT_KEY)
-    const map: Record<string, string> = {}
+    const raw = window.sessionStorage.getItem(SUMMARY_KEY)
+    const map: Record<string, SubmittedSummary> = {}
     if (raw) {
       const parsed: unknown = JSON.parse(raw)
       if (parsed && typeof parsed === 'object') {
         for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-          if (typeof value === 'string') map[key] = value
+          if (
+            value &&
+            typeof value === 'object' &&
+            typeof (value as SubmittedSummary).phone === 'string' &&
+            typeof (value as SubmittedSummary).username === 'string' &&
+            typeof (value as SubmittedSummary).userId === 'string' &&
+            typeof (value as SubmittedSummary).validUntil === 'string'
+          ) {
+            map[key] = value as SubmittedSummary
+          }
         }
       }
     }
-    map[reference] = phone
-    window.sessionStorage.setItem(CONTACT_KEY, JSON.stringify(map))
+    map[reference] = summary
+    window.sessionStorage.setItem(SUMMARY_KEY, JSON.stringify(map))
   } catch {
-    // no-op — the confirmation screen simply shows no phone number
+    // no-op — the confirmation screen simply shows no summary
   }
 }
 
-/** Returns the phone number submitted with this reference, if it is known. */
-export function getSubmittedContact(reference: string): string | null {
+/** Returns the summary submitted with this reference, if it is known. */
+export function getSubmittedSummary(reference: string): SubmittedSummary | null {
   try {
-    const raw = window.sessionStorage.getItem(CONTACT_KEY)
+    const raw = window.sessionStorage.getItem(SUMMARY_KEY)
     if (!raw) return null
     const parsed: unknown = JSON.parse(raw)
     if (!parsed || typeof parsed !== 'object') return null
     const value = (parsed as Record<string, unknown>)[reference]
-    return typeof value === 'string' ? value : null
+    if (!value || typeof value !== 'object') return null
+    const summary = value as Partial<SubmittedSummary>
+    if (
+      typeof summary.phone !== 'string' ||
+      typeof summary.username !== 'string' ||
+      typeof summary.userId !== 'string' ||
+      typeof summary.validUntil !== 'string'
+    ) {
+      return null
+    }
+    return {
+      phone: summary.phone,
+      username: summary.username,
+      userId: summary.userId,
+      validUntil: summary.validUntil,
+    }
   } catch {
     return null
   }

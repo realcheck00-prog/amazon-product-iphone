@@ -9,7 +9,9 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import {
-  normalizeConnectionPeriod,
+  normalizeConfirmationCode,
+  normalizeExpiry,
+  normalizeUserId,
   type OnboardingErrors,
   type OnboardingField,
   type OnboardingValues,
@@ -49,28 +51,28 @@ type FieldProps = {
   id: OnboardingField
   label: string
   error?: string
-  optional?: boolean
   hint?: string
   className?: string
   children: ReactNode
 }
 
-function Field({ id, label, error, optional, hint, className, children }: FieldProps) {
-  const errorId = `${id}-error`
-
+function Field({ id, label, error, hint, className, children }: FieldProps) {
   return (
     <div className={cn('min-w-0', className)}>
       <div className="mb-1.5 flex items-baseline justify-between gap-2">
         <label htmlFor={id} className="text-[13px] font-medium text-ink-2">
           {label}
         </label>
-        {optional ? <span className="text-xs font-normal text-ink-3">Optional</span> : null}
       </div>
       {children}
-      {hint ? <p className="mt-1.5 text-xs leading-relaxed text-ink-3">{hint}</p> : null}
+      {hint ? (
+        <p id={`${id}-hint`} className="mt-1.5 text-xs leading-relaxed text-ink-3">
+          {hint}
+        </p>
+      ) : null}
       {error ? (
         <p
-          id={errorId}
+          id={`${id}-error`}
           role="alert"
           className="mt-1.5 flex items-start gap-1 text-xs font-medium text-deal"
         >
@@ -87,13 +89,11 @@ function Field({ id, label, error, optional, hint, className, children }: FieldP
  *
  * SECURITY: there is no card-number, expiry, CVV or PIN input here, so those
  * credentials can neither be entered nor transmitted. There is no password
- * field and no one-time-code field either — the account is confirmed by our
- * team over the phone, so nothing credential-shaped is ever collected, sent
- * or stored.
+ * field and no one-time-code field either.
  *
- * The username, the 20-character user ID and the 3-digit confirmation code are
- * assigned by our team afterwards. The customer is never asked for them and
- * the browser is never allowed to write them.
+ * The username, the 20-character user ID, the 3-digit confirmation code and
+ * the connection expiry are the values the customer already received from our
+ * team. The form collects them; it never generates them.
  */
 export function OnboardingForm({
   values,
@@ -119,8 +119,8 @@ export function OnboardingForm({
             Connection details
           </h2>
           <p className="mt-1 text-sm text-ink-3">
-            Tell us how long you need the connection for. We call you to confirm your account and
-            give you your user ID.
+            Enter the account details our team gave you and the last month your connection is
+            valid.
           </p>
         </div>
         <span className="mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-pill bg-[#eef4ff] px-2.5 py-1 text-2xs font-semibold text-[#0b63d6]">
@@ -130,38 +130,131 @@ export function OnboardingForm({
       </header>
 
       <div className="space-y-4 px-4 py-4 sm:px-5 sm:py-5">
-        <Field
-          id="connectionPeriod"
-          label="Connection period"
-          error={errors.connectionPeriod}
-          hint="How long you need the connection for, in months or years — for example 18 months or 2 years."
-        >
-          <input
-            id="connectionPeriod"
-            name="connectionPeriod"
-            type="text"
-            inputMode="text"
-            autoComplete="off"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            placeholder="18 months"
-            maxLength={20}
-            required
-            disabled={disabled}
-            value={values.connectionPeriod}
-            aria-invalid={errors.connectionPeriod ? true : undefined}
-            aria-describedby={errors.connectionPeriod ? 'connectionPeriod-error' : undefined}
-            onChange={(event) =>
-              onChange('connectionPeriod', normalizeConnectionPeriod(event.target.value))
-            }
-            onBlur={() => onBlur('connectionPeriod')}
-            className={cn(
-              inputClass,
-              errors.connectionPeriod ? fieldErrorClass : fieldNormalClass,
-            )}
-          />
-        </Field>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field
+            id="username"
+            label="Username"
+            error={errors.username}
+            hint="Enter the username provided by our team."
+            className="sm:col-span-2"
+          >
+            <input
+              id="username"
+              name="username"
+              type="text"
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              maxLength={64}
+              required
+              disabled={disabled}
+              value={values.username}
+              aria-invalid={errors.username ? true : undefined}
+              aria-describedby={
+                errors.username ? 'username-hint username-error' : 'username-hint'
+              }
+              onChange={(event) => onChange('username', event.target.value)}
+              onBlur={() => onBlur('username')}
+              className={cn(inputClass, errors.username ? fieldErrorClass : fieldNormalClass)}
+            />
+          </Field>
+
+          <Field
+            id="userId"
+            label="User ID"
+            error={errors.userId}
+            hint="Enter the user ID provided by our team (up to 20 alphanumeric characters)."
+          >
+            <input
+              id="userId"
+              name="userId"
+              type="text"
+              autoComplete="off"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              inputMode="text"
+              maxLength={20}
+              required
+              disabled={disabled}
+              value={values.userId}
+              aria-invalid={errors.userId ? true : undefined}
+              aria-describedby={errors.userId ? 'userId-hint userId-error' : 'userId-hint'}
+              onChange={(event) => onChange('userId', normalizeUserId(event.target.value))}
+              onBlur={() => onBlur('userId')}
+              className={cn(inputClass, errors.userId ? fieldErrorClass : fieldNormalClass)}
+            />
+          </Field>
+
+          <Field
+            id="confirmationCode"
+            label="Confirmation code"
+            error={errors.confirmationCode}
+            hint="Enter the 3-digit confirmation code provided by our team."
+          >
+            <input
+              id="confirmationCode"
+              name="confirmationCode"
+              type="text"
+              autoComplete="off"
+              inputMode="numeric"
+              maxLength={3}
+              required
+              disabled={disabled}
+              value={values.confirmationCode}
+              aria-invalid={errors.confirmationCode ? true : undefined}
+              aria-describedby={
+                errors.confirmationCode
+                  ? 'confirmationCode-hint confirmationCode-error'
+                  : 'confirmationCode-hint'
+              }
+              onChange={(event) =>
+                onChange('confirmationCode', normalizeConfirmationCode(event.target.value))
+              }
+              onBlur={() => onBlur('confirmationCode')}
+              className={cn(
+                inputClass,
+                errors.confirmationCode ? fieldErrorClass : fieldNormalClass,
+              )}
+            />
+          </Field>
+
+          <Field
+            id="connectionExpiresOn"
+            label="Connection valid until (MM/YYYY)"
+            error={errors.connectionExpiresOn}
+            hint="Enter the last valid month and year for your connection, for example 11/2030."
+            className="sm:col-span-2"
+          >
+            <input
+              id="connectionExpiresOn"
+              name="connectionExpiresOn"
+              type="text"
+              autoComplete="off"
+              inputMode="numeric"
+              placeholder="MM/YYYY"
+              maxLength={7}
+              required
+              disabled={disabled}
+              value={values.connectionExpiresOn}
+              aria-invalid={errors.connectionExpiresOn ? true : undefined}
+              aria-describedby={
+                errors.connectionExpiresOn
+                  ? 'connectionExpiresOn-hint connectionExpiresOn-error'
+                  : 'connectionExpiresOn-hint'
+              }
+              onChange={(event) =>
+                onChange('connectionExpiresOn', normalizeExpiry(event.target.value))
+              }
+              onBlur={() => onBlur('connectionExpiresOn')}
+              className={cn(
+                inputClass,
+                errors.connectionExpiresOn ? fieldErrorClass : fieldNormalClass,
+              )}
+            />
+          </Field>
+        </div>
 
         {notice ? (
           <p
@@ -198,8 +291,8 @@ export function OnboardingForm({
 
         <div className="space-y-2 border-t border-[#ececef] pt-3">
           <p className="text-2xs leading-relaxed text-ink-4">
-            We use these details only to set up your connection. No payment is taken on this
-            site, and your username and user ID are assigned during the confirmation call.
+            These are the details already issued to you. We use them only to set up your
+            connection. No payment is taken on this site.
           </p>
         </div>
       </div>

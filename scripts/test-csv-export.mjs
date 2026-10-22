@@ -33,7 +33,10 @@ const baseRow = {
   fullName: 'Alex Morgan',
   email: 'alex@example.com',
   phone: '+1 (555) 010-9999',
-  connectionPeriod: '18 months',
+  username: 'alexmorgan',
+  userId: '0012AbCd',
+  confirmationCode: '007',
+  validUntil: '11/2030',
 }
 
 check('the header matches the permitted columns', () => {
@@ -43,7 +46,10 @@ check('the header matches the permitted columns', () => {
     'Full Name',
     'Email',
     'Phone',
-    'Connection Period',
+    'Username',
+    'User ID',
+    'Confirmation Code',
+    'Valid Until',
   ])
 })
 
@@ -51,11 +57,11 @@ check('the document has a header row and one data row', () => {
   const lines = buildAccountCsv(baseRow).split('\r\n')
   assert.equal(
     lines[0],
-    '"Submitted At","Reference","Full Name","Email","Phone","Connection Period"',
+    '"Submitted At","Reference","Full Name","Email","Phone","Username","User ID","Confirmation Code","Valid Until"',
   )
   assert.equal(
     lines[1],
-    '"2026-10-22T12:02:20.212Z","6f1c2b3a-3d4e-4f50-8a91-2b3c4d5e6f70","Alex Morgan","alex@example.com","\'+1 (555) 010-9999","18 months"',
+    '"2026-10-22T12:02:20.212Z","6f1c2b3a-3d4e-4f50-8a91-2b3c4d5e6f70","Alex Morgan","alex@example.com","\'+1 (555) 010-9999","alexmorgan","0012AbCd","007","11/2030"',
   )
   assert.equal(lines[2], '')
   assert.equal(lines.length, 3)
@@ -67,6 +73,12 @@ check('every value is quoted', () => {
   assert.equal(dataLine.split('","').length - 1, CSV_COLUMNS.length - 1)
   assert.ok(dataLine.startsWith('"'))
   assert.ok(dataLine.endsWith('"'))
+})
+
+check('a leading-zero confirmation code stays a three-character string', () => {
+  const csv = buildAccountCsv(baseRow)
+  assert.ok(csv.includes('"007"'))
+  assert.ok(!csv.includes('"7"'))
 })
 
 check('an embedded double quote is doubled', () => {
@@ -100,27 +112,16 @@ check('a value that is not a formula is left untouched', () => {
 })
 
 check('a formula in a real field is neutralised in the document', () => {
-  const csv = buildAccountCsv({ ...baseRow, fullName: '=HYPERLINK("evil")' })
+  const csv = buildAccountCsv({ ...baseRow, username: '=HYPERLINK("evil")' })
   assert.ok(csv.includes(`"'=HYPERLINK(""evil"")"`))
   assert.ok(!csv.includes(',"=HYPERLINK'))
   assert.ok(!csv.includes('"=HYPERLINK'))
 })
 
-check('a leading-zero confirmation code would survive as text', () => {
-  assert.equal(escapeCsvValue('007'), '"007"')
-})
-
-check('a leading plus (a real phone number) is neutralised but kept', () => {
-  assert.equal(escapeCsvValue('+1 (555) 010-9999'), '"\'+1 (555) 010-9999"')
-  assert.equal(escapeCsvValue('15550109999'), '"15550109999"')
-})
-
 check('fields outside the allow-list are never written', () => {
   const csv = buildAccountCsv({
     ...baseRow,
-    phone: '5550109999',
-    username: 'alexmorgan',
-    confirmationCode: '007',
+    connectionPeriod: '18 months',
     cardNumber: '4242424242424242',
     cvv: '123',
     pin: '9999',
@@ -129,8 +130,7 @@ check('fields outside the allow-list are never written', () => {
     password: 'hunter2',
     accessToken: 'a1bbc7d5-e379-4052-a74e-4204c4313afd',
   })
-  assert.ok(!csv.includes('alexmorgan'))
-  assert.ok(!csv.includes('"007"'))
+  assert.ok(!csv.includes('18 months'))
   assert.ok(!csv.includes('4242424242424242'))
   assert.ok(!csv.includes('a1bbc7d5-e379-4052-a74e-4204c4313afd'))
   assert.ok(!csv.includes('"123"'))

@@ -20,13 +20,16 @@
 export type AccountCsvRow = {
   /** ISO-8601 submission timestamp, generated on the client. */
   submittedAt: string
-  /** The reference the customer quotes when they call us. */
+  /** The reference the customer quotes when they contact us. */
   reference: string
   fullName: string
   email: string
   phone: string
-  /** The connection period, e.g. `18 months`. */
-  connectionPeriod: string
+  username: string
+  userId: string
+  confirmationCode: string
+  /** The last month the connection is valid, as `MM/YYYY`. */
+  validUntil: string
 }
 
 /** Column order and header labels of the exported file. */
@@ -36,7 +39,10 @@ export const CSV_COLUMNS = [
   'Full Name',
   'Email',
   'Phone',
-  'Connection Period',
+  'Username',
+  'User ID',
+  'Confirmation Code',
+  'Valid Until',
 ] as const
 
 /**
@@ -74,7 +80,10 @@ export function buildAccountCsv(row: AccountCsvRow): string {
       row.fullName,
       row.email,
       row.phone,
-      row.connectionPeriod,
+      row.username,
+      row.userId,
+      row.confirmationCode,
+      row.validUntil,
     ]),
   ]
   return `${lines.join('\r\n')}\r\n`

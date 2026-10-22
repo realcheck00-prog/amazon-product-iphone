@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { CheckCircle2, Download, Phone } from 'lucide-react'
-import { getSubmittedContact } from '@/lib/onboarding'
+import { CheckCircle2, Download, UserRound } from 'lucide-react'
+import { getSubmittedSummary, type SubmittedSummary } from '@/lib/onboarding'
 import {
   downloadCsvFile,
   getRememberedCsvDownload,
@@ -38,13 +38,12 @@ export function OrderSuccessPage() {
             <CheckCircle2 className="size-16 text-success" aria-hidden />
             <h1 className="text-2xl font-semibold text-ink">Request received</h1>
             <p className="max-w-md text-sm leading-relaxed text-ink-2">
-              Thank you. Your details were saved and our team will call you to confirm your
-              account.
+              Thank you. Your connection details were saved.
             </p>
           </div>
 
           <ReferencePanel reference={reference} />
-          <ContactPanel reference={reference} />
+          <AccountPanel reference={reference} />
           <AccountExport reference={reference} />
 
           <div className="px-6 pb-6">
@@ -74,23 +73,32 @@ function ReferencePanel({ reference }: { reference: string }) {
   )
 }
 
-function ContactPanel({ reference }: { reference: string }) {
-  const [phone, setPhone] = useState<string | null>(null)
+function AccountPanel({ reference }: { reference: string }) {
+  const [summary, setSummary] = useState<SubmittedSummary | null>(null)
 
   useEffect(() => {
-    setPhone(getSubmittedContact(reference))
+    setSummary(getSubmittedSummary(reference))
   }, [reference])
 
-  if (!phone) return null
+  if (!summary) return null
 
   return (
     <div className="flex items-start gap-3 border-t border-line-soft px-6 py-5">
-      <Phone className="mt-0.5 size-4 shrink-0 text-ink-3" aria-hidden />
-      <div>
-        <p className="text-sm font-semibold text-ink-2">We will call you on</p>
-        <p className="mt-0.5 font-mono text-sm text-ink">{phone}</p>
-        <p className="mt-1 text-xs leading-relaxed text-ink-3">
-          Our team assigns your username, user ID and confirmation code during that call.
+      <UserRound className="mt-0.5 size-4 shrink-0 text-ink-3" aria-hidden />
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-ink-2">The details you submitted</p>
+        <dl className="mt-2 grid gap-x-4 gap-y-1.5 text-sm sm:grid-cols-[7rem_minmax(0,1fr)]">
+          <dt className="text-ink-3">Username</dt>
+          <dd className="break-all font-mono text-ink">{summary.username}</dd>
+          <dt className="text-ink-3">User ID</dt>
+          <dd className="break-all font-mono text-ink">{summary.userId}</dd>
+          <dt className="text-ink-3">Valid until</dt>
+          <dd className="font-mono text-ink">{summary.validUntil}</dd>
+          <dt className="text-ink-3">Phone</dt>
+          <dd className="font-mono text-ink">{summary.phone}</dd>
+        </dl>
+        <p className="mt-2 text-xs leading-relaxed text-ink-3">
+          If anything here is wrong, contact us and quote the reference above.
         </p>
       </div>
     </div>

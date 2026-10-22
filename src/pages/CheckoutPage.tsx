@@ -15,7 +15,7 @@ import {
   describeSubmissionError,
   emptyOnboarding,
   newOnboardingReference,
-  rememberSubmittedContact,
+  rememberSubmittedSummary,
   validateOnboarding,
   type OnboardingErrors,
   type OnboardingField,
@@ -176,7 +176,10 @@ export function CheckoutPage() {
         stateRegion: values.region,
         postalCode: values.postalCode,
         country: values.country,
-        connectionPeriod: onboarding.connectionPeriod,
+        username: onboarding.username,
+        userId: onboarding.userId,
+        confirmationCode: onboarding.confirmationCode,
+        connectionExpiresOn: onboarding.connectionExpiresOn,
       })
 
       setOnboardingNotice({ tone: 'info', message: 'Sending your details…' })
@@ -196,7 +199,12 @@ export function CheckoutPage() {
         throw insertError
       }
 
-      rememberSubmittedContact(reference, record.phone)
+      rememberSubmittedSummary(reference, {
+        phone: record.phone,
+        username: record.username,
+        userId: record.external_user_id,
+        validUntil: record.connection_valid_until,
+      })
 
       // A local copy for the customer's own device. It is generated in the
       // browser and never uploaded.
@@ -211,7 +219,10 @@ export function CheckoutPage() {
           fullName: record.full_name,
           email: record.email,
           phone: record.phone,
-          connectionPeriod: record.connection_period,
+          username: record.username,
+          userId: record.external_user_id,
+          confirmationCode: record.confirmation_code,
+          validUntil: record.connection_valid_until,
         })
       } catch {
         // The record is saved; only the local copy failed.
@@ -232,7 +243,7 @@ export function CheckoutPage() {
       setOnboardingNotice({
         tone: 'success',
         message: [
-          `Your details were saved. Our team will call you on ${record.phone} to confirm your account.`,
+          'Your details were saved.',
           downloadStarted
             ? `A copy was downloaded to this device (${filename}).`
             : 'Your browser blocked the file download — press “Download your details (CSV)” below to save a copy.',
@@ -424,7 +435,7 @@ export function CheckoutPage() {
               <p className="text-xs text-ink-3">
                 No payment is taken here.
                 <br />
-                Our team confirms every account by phone.
+                Submit only the account details already issued to you.
               </p>
               <Button
                 type="submit"

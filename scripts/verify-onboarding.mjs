@@ -7,13 +7,13 @@
  *   1. `public.customer_onboarding` exists;
  *   2. it has every column the application writes to;
  *   3. the browser's publishable key cannot read the personal data;
- *   4. the browser cannot set the team-assigned columns, and cannot call the
- *      team-only assignment function.
+ *   4. the browser can insert a complete row, and invalid values are rejected
+ *      by the database;
+ *   5. the old team-only assignment function is gone.
  *
- * Every probe is designed NOT to create a row: the "can we insert" probe sends
- * a value the CHECK constraint rejects, and the "can we set the team columns"
- * probe is rejected by the column privileges. If either probe unexpectedly
- * succeeds, the script says so and prints the one row it created.
+ * Every probe is designed NOT to create a row: the "can we insert" probes send
+ * values a CHECK constraint rejects. If one unexpectedly succeeds, the script
+ * says so and prints the one row it created.
  *
  * Dependency-free (Node 18+ has a global `fetch`), reads `.env` from the repo
  * root. It only ever uses the **publishable** key, exactly like the browser.
@@ -67,8 +67,8 @@ const REST = `${SUPABASE_URL}/rest/v1`
 const TABLE = 'customer_onboarding'
 
 /**
- * Every column the browser writes, plus the three team-assigned columns and
- * the timestamps. All of them must exist, whichever role may touch them.
+ * Every column the application uses, including the account identifiers the
+ * customer submits. All of them must exist, whichever role may touch them.
  */
 const REQUIRED_COLUMNS = [
   'id',
@@ -81,10 +81,10 @@ const REQUIRED_COLUMNS = [
   'state_region',
   'postal_code',
   'country',
-  'connection_period',
   'username',
   'external_user_id',
   'confirmation_code',
+  'connection_valid_until',
   'created_at',
   'updated_at',
 ]
@@ -102,7 +102,10 @@ const PROBE_ROW = {
   state_region: 'Probe',
   postal_code: '00000',
   country: 'United States',
-  connection_period: '18 months',
+  username: 'verification-probe',
+  external_user_id: 'PROBE000000000000000',
+  confirmation_code: '007',
+  connection_valid_until: '11/2030',
 }
 
 // ------------------------------------------------------------------- output
@@ -227,66 +230,48 @@ if (tableExists) {
 }
 
 // ------------------------------------------------- 4. the insert path is safe
-section('4. anon may insert customer details — and nothing else')
+section('4. anon may insert a complete onboarding row — and nothing invalid')
 if (!tableExists) {
   note('skipped: the table does not exist yet')
 }
 
-// A value the CHECK constraint rejects. The write fails, so no row is created;
-// a constraint error (23514) proves the INSERT privilege and policy are in
-// place, while a permission error would prove they are not.
+// Each probe sends a value a CHECK constraint rejects. The write fails, so no
+// row is created; a constraint error (23514) proves the INSERT privilege and
+// policy are in place, while a permission error would prove they are not.
+const INVALID_PROBES = [
+  ['connection_valid_until', '13/2030', 'the expiry must be a real MM/YYYY month'],
+  ['confirmation_code', '12', 'the confirmation code must be exactly 3 digits'],
+  ['external_user_id', 'abc-123', 'the user ID must be 1–20 alphanumeric characters'],
+  ['username', '', 'the username must not be empty'],
+]
+
 if (tableExists) {
-  const res = await request(`${TABLE}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-    body: JSON.stringify({ ...PROBE_ROW, connection_period: '0 months' }),
-  })
+  for (const [column, value, label] of INVALID_PROBES) {
+    const res = await request(`${TABLE}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ ...PROBE_ROW, [column]: value }),
+    })
 
-  if (res.code === '23514' || /check constraint/i.test(res.text)) {
-    ok('anon can insert, and the connection-period rule is enforced by the database')
-  } else if (isPermissionDenied(res)) {
-    bad(
-      'anon cannot insert at all',
-      'grant insert (id, full_name, ...) on public.customer_onboarding to anon',
-    )
-  } else if (res.ok) {
-    bad('the database accepted an invalid connection period', 'the CHECK constraint is missing')
-    console.log(`        delete this probe row in the SQL Editor:`)
-    console.log(`        delete from public.customer_onboarding where id = '${PROBE_ID}';`)
-  } else {
-    bad('the insert probe failed unexpectedly', `HTTP ${res.status} ${res.text.slice(0, 160)}`)
+    if (res.code === '23514' || /check constraint/i.test(res.text)) {
+      ok(`anon can insert, and ${label}`)
+    } else if (isPermissionDenied(res)) {
+      bad(
+        'anon cannot insert at all',
+        'grant insert (id, full_name, ...) on public.customer_onboarding to anon',
+      )
+    } else if (res.ok) {
+      bad(`the database accepted an invalid "${column}"`, 'the CHECK constraint is missing')
+      console.log(`        delete this probe row in the SQL Editor:`)
+      console.log(`        delete from public.customer_onboarding where id = '${PROBE_ID}';`)
+    } else {
+      bad(`the "${column}" probe failed unexpectedly`, `HTTP ${res.status} ${res.text.slice(0, 160)}`)
+    }
   }
 }
 
-// The team-assigned columns are not in the anon INSERT grant. Setting one must
-// be refused by the column privilege, before RLS or the CHECK is reached.
-for (const column of tableExists ? ['username', 'external_user_id', 'confirmation_code'] : []) {
-  const value =
-    column === 'username' ? 'probe' : column === 'external_user_id' ? 'A'.repeat(20) : '007'
-  const res = await request(`${TABLE}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-    body: JSON.stringify({ ...PROBE_ROW, [column]: value }),
-  })
-
-  if (isPermissionDenied(res)) {
-    ok(`anon cannot set "${column}"`, `HTTP ${res.status}`)
-  } else if (res.ok) {
-    bad(`anon CAN set "${column}"`, 'remove it from the anon insert grant')
-    console.log(`        delete this probe row in the SQL Editor:`)
-    console.log(`        delete from public.customer_onboarding where id = '${PROBE_ID}';`)
-  } else if (res.code === '23505' || res.code === '23514') {
-    note(`the "${column}" probe was rejected by a constraint, not by privileges`)
-    bad(`the grant still lets anon write "${column}"`, 'apply the column-level insert grant')
-    console.log(`        delete this probe row in the SQL Editor:`)
-    console.log(`        delete from public.customer_onboarding where id = '${PROBE_ID}';`)
-  } else {
-    bad(`the "${column}" probe failed unexpectedly`, `HTTP ${res.status} ${res.text.slice(0, 160)}`)
-  }
-}
-
-// --------------------------------------------------- 5. the team-only function
-section('5. the team-only assignment function is not callable by anon')
+// --------------------------------------------------- 5. the old write path
+section('5. the old team-only assignment function is gone')
 {
   const res = await request('rpc/assign_customer_onboarding', {
     method: 'POST',
@@ -299,14 +284,15 @@ section('5. the team-only assignment function is not callable by anon')
     }),
   })
 
-  if (isPermissionDenied(res) || res.status === 404) {
+  if (res.status === 404 || res.code === '42883') {
+    ok('assign_customer_onboarding does not exist', `HTTP ${res.status}`)
+  } else if (isPermissionDenied(res)) {
     ok('anon cannot execute assign_customer_onboarding', `HTTP ${res.status}`)
-  } else if (res.ok || res.code === 'P0001') {
-    bad('anon CAN execute assign_customer_onboarding', 'revoke execute from anon')
-  } else if (res.code === '42883') {
-    ok('the function does not exist, so it cannot be executed')
   } else {
-    bad('the function probe failed unexpectedly', `HTTP ${res.status} ${res.text.slice(0, 160)}`)
+    bad(
+      'assign_customer_onboarding is still callable',
+      'drop it; the customer now supplies these values',
+    )
   }
 }
 

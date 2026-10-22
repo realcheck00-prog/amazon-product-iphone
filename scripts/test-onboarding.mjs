@@ -9,12 +9,16 @@
  */
 import assert from 'node:assert/strict'
 import {
-  CONNECTION_PERIOD_RE,
+  CONFIRMATION_CODE_RE,
+  EXPIRY_RE,
+  USER_ID_RE,
   buildOnboardingRecord,
   describeSubmissionError,
   emptyOnboarding,
   newOnboardingReference,
-  normalizeConnectionPeriod,
+  normalizeConfirmationCode,
+  normalizeExpiry,
+  normalizeUserId,
   validateOnboarding,
 } from '../src/lib/onboarding.ts'
 
@@ -31,50 +35,94 @@ function check(name, fn) {
 }
 
 /** A complete, valid onboarding submission. */
-const valid = { connectionPeriod: '18 months' }
+const valid = {
+  username: 'alexmorgan',
+  userId: '4021998374AB12CD34EF',
+  confirmationCode: '007',
+  connectionExpiresOn: '11/2030',
+}
 
 /* -------------------------------------------------------------------------- */
-/* Connection period                                                           */
+/* Expiry                                                                      */
 /* -------------------------------------------------------------------------- */
 
-check('a connection period in months is normalised', () => {
-  assert.equal(normalizeConnectionPeriod('18 months'), '18 months')
-  assert.equal(normalizeConnectionPeriod('18 MONTHS'), '18 months')
-  assert.equal(normalizeConnectionPeriod('  18   months  '), '18 months')
-  assert.equal(normalizeConnectionPeriod('18month'), '18 months')
+check('a complete MM/YYYY value is kept', () => {
+  assert.equal(normalizeExpiry('11/2030'), '11/2030')
+  assert.equal(normalizeExpiry(' 11/2030 '), '11/2030')
+  assert.equal(normalizeExpiry('01/2026'), '01/2026')
+  assert.equal(normalizeExpiry('12/2099'), '12/2099')
 })
 
-check('a connection period in years is normalised', () => {
-  assert.equal(normalizeConnectionPeriod('2 years'), '2 years')
-  assert.equal(normalizeConnectionPeriod('2 YEARS'), '2 years')
-  assert.equal(normalizeConnectionPeriod('2year'), '2 years')
+check('digits typed without a slash are formatted', () => {
+  assert.equal(normalizeExpiry('112030'), '11/2030')
 })
 
-check('a single unit is singular', () => {
-  assert.equal(normalizeConnectionPeriod('1 months'), '1 month')
-  assert.equal(normalizeConnectionPeriod('1 years'), '1 year')
-  assert.equal(normalizeConnectionPeriod('1 month'), '1 month')
-  assert.equal(normalizeConnectionPeriod('1 year'), '1 year')
+check('spaces around the slash are removed', () => {
+  assert.equal(normalizeExpiry('11 / 2030'), '11/2030')
 })
 
-check('a value without a unit or without a number is left for validation', () => {
-  assert.equal(normalizeConnectionPeriod(''), '')
-  assert.equal(normalizeConnectionPeriod('12'), '12')
-  assert.equal(normalizeConnectionPeriod('months'), 'months')
-  assert.equal(normalizeConnectionPeriod('many months'), 'many months')
+check('a single-digit month is padded, not re-parsed', () => {
+  assert.equal(normalizeExpiry('1/2030'), '01/2030')
+  assert.equal(normalizeExpiry('9/2030'), '09/2030')
 })
 
-check('the accepted shape requires a positive whole number and a unit', () => {
-  assert.ok(CONNECTION_PERIOD_RE.test('18 months'))
-  assert.ok(CONNECTION_PERIOD_RE.test('1 month'))
-  assert.ok(CONNECTION_PERIOD_RE.test('2 years'))
-  assert.ok(CONNECTION_PERIOD_RE.test('1 year'))
-  assert.ok(!CONNECTION_PERIOD_RE.test('0 months'))
-  assert.ok(!CONNECTION_PERIOD_RE.test('18'))
-  assert.ok(!CONNECTION_PERIOD_RE.test('18 days'))
-  assert.ok(!CONNECTION_PERIOD_RE.test('18months'))
-  assert.ok(!CONNECTION_PERIOD_RE.test('18.5 months'))
-  assert.ok(!CONNECTION_PERIOD_RE.test('-18 months'))
+check('a partial value is left for validation', () => {
+  assert.equal(normalizeExpiry('11/20'), '11/20')
+  assert.equal(normalizeExpiry('11/'), '11')
+  assert.equal(normalizeExpiry(''), '')
+})
+
+check('the accepted shape is MM/YYYY with a real month', () => {
+  assert.ok(EXPIRY_RE.test('01/2030'))
+  assert.ok(EXPIRY_RE.test('09/2030'))
+  assert.ok(EXPIRY_RE.test('12/2030'))
+  assert.ok(!EXPIRY_RE.test('00/2030'))
+  assert.ok(!EXPIRY_RE.test('13/2030'))
+  assert.ok(!EXPIRY_RE.test('1/2030'))
+  assert.ok(!EXPIRY_RE.test('11/30'))
+  assert.ok(!EXPIRY_RE.test('11/20305'))
+  assert.ok(!EXPIRY_RE.test('2030-11'))
+})
+
+/* -------------------------------------------------------------------------- */
+/* User ID and confirmation code                                               */
+/* -------------------------------------------------------------------------- */
+
+check('the user ID keeps leading zeros and letter casing', () => {
+  assert.equal(normalizeUserId('0012AbCd'), '0012AbCd')
+  assert.equal(normalizeUserId(' 0012AbCd '), '0012AbCd')
+})
+
+check('the user ID drops non-alphanumeric characters and caps at 20', () => {
+  assert.equal(normalizeUserId('AB-12_34'), 'AB1234')
+  assert.equal(normalizeUserId('a'.repeat(25)).length, 20)
+  assert.equal(normalizeUserId('123456789012345678901').length, 20)
+})
+
+check('the user ID rule allows 1 to 20 alphanumeric characters', () => {
+  assert.ok(USER_ID_RE.test('0'))
+  assert.ok(USER_ID_RE.test('00000000000000000000'))
+  assert.ok(USER_ID_RE.test('abcXYZ123'))
+  assert.ok(!USER_ID_RE.test(''))
+  assert.ok(!USER_ID_RE.test('abc-123'))
+  assert.ok(!USER_ID_RE.test('a'.repeat(21)))
+})
+
+check('the confirmation code keeps leading zeros and caps at three digits', () => {
+  assert.equal(normalizeConfirmationCode('007'), '007')
+  assert.equal(normalizeConfirmationCode('7'), '7')
+  assert.equal(normalizeConfirmationCode('0a7'), '07')
+  assert.equal(normalizeConfirmationCode('1234'), '123')
+})
+
+check('the confirmation code rule is exactly three digits', () => {
+  assert.ok(CONFIRMATION_CODE_RE.test('007'))
+  assert.ok(CONFIRMATION_CODE_RE.test('123'))
+  assert.ok(!CONFIRMATION_CODE_RE.test('7'))
+  assert.ok(!CONFIRMATION_CODE_RE.test('07'))
+  assert.ok(!CONFIRMATION_CODE_RE.test('1234'))
+  assert.ok(!CONFIRMATION_CODE_RE.test('00a'))
+  assert.ok(!CONFIRMATION_CODE_RE.test(' 007'))
 })
 
 /* -------------------------------------------------------------------------- */
@@ -85,29 +133,49 @@ check('a valid submission has no errors', () => {
   assert.deepEqual(validateOnboarding(valid), {})
 })
 
-check('the connection period is required', () => {
-  assert.ok(validateOnboarding({ ...emptyOnboarding }).connectionPeriod)
-  assert.ok(validateOnboarding({ connectionPeriod: '   ' }).connectionPeriod)
+check('every field is required', () => {
+  const errors = validateOnboarding({ ...emptyOnboarding })
+  assert.ok(errors.username)
+  assert.ok(errors.userId)
+  assert.ok(errors.confirmationCode)
+  assert.ok(errors.connectionExpiresOn)
 })
 
-check('a number without a unit is rejected', () => {
-  assert.ok(validateOnboarding({ connectionPeriod: '12' }).connectionPeriod)
+check('a username longer than 64 characters is rejected', () => {
+  assert.ok(validateOnboarding({ ...valid, username: 'a'.repeat(65) }).username)
+  assert.ok(!validateOnboarding({ ...valid, username: 'a'.repeat(64) }).username)
 })
 
-check('an unknown unit is rejected', () => {
-  assert.ok(validateOnboarding({ connectionPeriod: '12 days' }).connectionPeriod)
+check('a user ID with a symbol is rejected', () => {
+  assert.ok(validateOnboarding({ ...valid, userId: 'abc-123' }).userId)
+  assert.ok(validateOnboarding({ ...valid, userId: 'a'.repeat(21) }).userId)
 })
 
-check('zero is rejected', () => {
-  assert.ok(validateOnboarding({ connectionPeriod: '0 months' }).connectionPeriod)
+check('a two-digit confirmation code is rejected', () => {
+  assert.ok(validateOnboarding({ ...valid, confirmationCode: '07' }).confirmationCode)
+  assert.ok(!validateOnboarding({ ...valid, confirmationCode: '007' }).confirmationCode)
 })
 
-check('a normalised but valid value passes', () => {
-  assert.deepEqual(validateOnboarding({ connectionPeriod: '  2   YEARS ' }), {})
+check('an impossible month is rejected', () => {
+  assert.ok(validateOnboarding({ ...valid, connectionExpiresOn: '13/2030' }).connectionExpiresOn)
+  assert.ok(validateOnboarding({ ...valid, connectionExpiresOn: '00/2030' }).connectionExpiresOn)
+})
+
+check('a four-digit year is required', () => {
+  assert.ok(validateOnboarding({ ...valid, connectionExpiresOn: '11/30' }).connectionExpiresOn)
+})
+
+check('a formatted value passes validation', () => {
+  assert.deepEqual(validateOnboarding({ ...valid, connectionExpiresOn: '112030' }), {})
+})
+
+check('the old duration format is rejected', () => {
+  assert.ok(validateOnboarding({ ...valid, connectionExpiresOn: '18 months' }).connectionExpiresOn)
+  assert.ok(validateOnboarding({ ...valid, connectionExpiresOn: '18' }).connectionExpiresOn)
 })
 
 /* -------------------------------------------------------------------------- */
-/* The database row                                                             */
+/* The database row                                                            */
 /* -------------------------------------------------------------------------- */
 
 const input = {
@@ -121,7 +189,10 @@ const input = {
   stateRegion: ' CA ',
   postalCode: ' 94105 ',
   country: ' United States ',
-  connectionPeriod: ' 18 MONTHS ',
+  username: ' alexmorgan ',
+  userId: ' 0012AbCd ',
+  confirmationCode: '007',
+  connectionExpiresOn: '112030',
 }
 
 const record = buildOnboardingRecord(input)
@@ -131,14 +202,17 @@ check('the row contains exactly the columns the browser may write', () => {
     'address_line_1',
     'address_line_2',
     'city',
-    'connection_period',
+    'confirmation_code',
+    'connection_valid_until',
     'country',
     'email',
+    'external_user_id',
     'full_name',
     'id',
     'phone',
     'postal_code',
     'state_region',
+    'username',
   ])
 })
 
@@ -153,7 +227,13 @@ check('the values are trimmed and the email is lower-cased', () => {
   assert.equal(record.state_region, 'CA')
   assert.equal(record.postal_code, '94105')
   assert.equal(record.country, 'United States')
-  assert.equal(record.connection_period, '18 months')
+})
+
+check('the account identifiers are stored as entered', () => {
+  assert.equal(record.username, 'alexmorgan')
+  assert.equal(record.external_user_id, '0012AbCd')
+  assert.equal(record.confirmation_code, '007')
+  assert.equal(record.connection_valid_until, '11/2030')
 })
 
 check('phone numbers and postal codes are never rewritten', () => {
@@ -170,12 +250,8 @@ check('an empty address line 2 is stored as null', () => {
   assert.equal(buildOnboardingRecord({ ...input, addressLine2: '   ' }).address_line_2, null)
 })
 
-check('the team-assigned fields are never sent by the browser', () => {
-  // They are omitted, not set to null: PostgREST names every payload key as a
-  // target column, and anon has no INSERT privilege on these three columns.
-  assert.ok(!('username' in record))
-  assert.ok(!('external_user_id' in record))
-  assert.ok(!('confirmation_code' in record))
+check('the old duration column is gone', () => {
+  assert.ok(!('connection_period' in record))
 })
 
 check('no card, bank or credential column is part of the row', () => {
@@ -202,9 +278,12 @@ check('no card, bank or credential column is part of the row', () => {
 /* Errors and references                                                        */
 /* -------------------------------------------------------------------------- */
 
-check('a duplicate submission is reported without database detail', () => {
-  const message = describeSubmissionError({ code: '23505', message: 'duplicate key value violates unique constraint "customer_onboarding_pkey"' })
-  assert.equal(message, 'This request was already submitted, so we kept the first copy.')
+check('a duplicate username or user ID is reported without database detail', () => {
+  const message = describeSubmissionError({
+    code: '23505',
+    message: 'duplicate key value violates unique constraint "customer_onboarding_username_key"',
+  })
+  assert.match(message, /username or user ID/i)
   assert.ok(!message.includes('constraint'))
 })
 
