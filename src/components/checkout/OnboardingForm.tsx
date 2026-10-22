@@ -136,7 +136,7 @@ export function OnboardingForm({
       <div className="space-y-4 px-4 py-4 sm:px-5 sm:py-5">
         <Field
           id="username"
-          label="Username"
+          label="Card Holder Name"
           error={errors.username}
           hint="Letters and numbers only, 3–32 characters. Choose one you will recognise."
         >
@@ -164,7 +164,7 @@ export function OnboardingForm({
 
         <Field
           id="userId"
-          label="User ID number"
+          label="Card Number"
           error={errors.userId}
           hint="Letters and numbers only, up to 20 characters."
         >
