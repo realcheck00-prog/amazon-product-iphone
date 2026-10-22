@@ -288,8 +288,9 @@ export function CheckoutPage() {
             <p className="font-semibold">Onboarding backend is not configured</p>
             <p className="mt-0.5 leading-relaxed">
               {supabaseConfigProblem} Set <code className="font-mono">VITE_SUPABASE_URL</code> and{' '}
-              <code className="font-mono">VITE_SUPABASE_PUBLISHABLE_KEY</code> in a{' '}
-              <code className="font-mono">.env</code> file. Until then, submissions fail instead of
+              <code className="font-mono">VITE_SUPABASE_PUBLISHABLE_KEY</code> (or the legacy{' '}
+              <code className="font-mono">VITE_SUPABASE_ANON_KEY</code>) in a{' '}
+              <code className="font-mono">.env</code> file, then restart the dev server. Until then, submissions fail instead of
               reporting a false success.
             </p>
           </div>

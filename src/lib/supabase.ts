@@ -3,11 +3,15 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 /**
  * Supabase browser client.
  *
- * Reads `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. Only the
- * publishable key belongs in the frontend — it is the modern replacement for
- * the anon key and is safe to ship in a browser bundle. The database
- * password, the service-role key and every other secret stay on the server
- * and must never appear in `VITE_*` variables, in this file or in a log.
+ * Reads `VITE_SUPABASE_URL` and one browser-safe key:
+ *
+ *   - `VITE_SUPABASE_PUBLISHABLE_KEY` — the modern `sb_publishable_…` key
+ *   - `VITE_SUPABASE_ANON_KEY` — the legacy anon JWT, still valid
+ *
+ * Both are safe to ship in a browser bundle: they carry the `anon` role only.
+ * The database password, the service-role key and every other secret stay on
+ * the server and must never appear in `VITE_*` variables, in this file or in
+ * a log.
  *
  * This onboarding flow creates no Auth session, so session persistence is
  * switched off: the client is used only to insert one onboarding row.
@@ -17,7 +21,11 @@ const PLACEHOLDER_RE = /your-project-ref|your-publishable-key|your_publishable_k
 const HTTPS_URL_RE = /^https:\/\/[^\s]+$/i
 
 const rawUrl = (import.meta.env.VITE_SUPABASE_URL ?? '').trim()
-const rawKey = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? '').trim()
+const rawKey = (
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ??
+  import.meta.env.VITE_SUPABASE_ANON_KEY ??
+  ''
+).trim()
 
 function isValidUrl(value: string): boolean {
   return HTTPS_URL_RE.test(value) && !PLACEHOLDER_RE.test(value)
@@ -40,7 +48,7 @@ export const supabaseConfigProblem: string | null = isSupabaseConfigured
     : !isValidUrl(rawUrl)
       ? `VITE_SUPABASE_URL is not a valid https://…supabase.co URL (currently "${rawUrl}").`
       : !isValidKey(rawKey)
-        ? 'VITE_SUPABASE_PUBLISHABLE_KEY is missing or still the .env.example placeholder.'
+        ? 'VITE_SUPABASE_PUBLISHABLE_KEY (or VITE_SUPABASE_ANON_KEY) is missing or still the .env.example placeholder.'
         : 'Supabase configuration is incomplete.'
 
 export const supabase: SupabaseClient | null = isSupabaseConfigured

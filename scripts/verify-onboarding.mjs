@@ -50,11 +50,15 @@ function loadEnv() {
 const env = loadEnv()
 const SUPABASE_URL = (process.env.VITE_SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? '').replace(/\/+$/, '')
 const PUBLIC_KEY =
-  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? env.VITE_SUPABASE_PUBLISHABLE_KEY ?? ''
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ??
+  env.VITE_SUPABASE_PUBLISHABLE_KEY ??
+  process.env.VITE_SUPABASE_ANON_KEY ??
+  env.VITE_SUPABASE_ANON_KEY ??
+  ''
 
 if (!SUPABASE_URL || !PUBLIC_KEY) {
   console.error(
-    'Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY (in .env or the environment).',
+    'Missing VITE_SUPABASE_URL and a browser-safe key (VITE_SUPABASE_PUBLISHABLE_KEY or VITE_SUPABASE_ANON_KEY) in .env or the environment.',
   )
   process.exit(1)
 }
@@ -224,6 +228,9 @@ if (tableExists) {
 
 // ------------------------------------------------- 4. the insert path is safe
 section('4. anon may insert customer details — and nothing else')
+if (!tableExists) {
+  note('skipped: the table does not exist yet')
+}
 
 // A value the CHECK constraint rejects. The write fails, so no row is created;
 // a constraint error (23514) proves the INSERT privilege and policy are in
@@ -253,7 +260,7 @@ if (tableExists) {
 
 // The team-assigned columns are not in the anon INSERT grant. Setting one must
 // be refused by the column privilege, before RLS or the CHECK is reached.
-for (const column of ['username', 'external_user_id', 'confirmation_code']) {
+for (const column of tableExists ? ['username', 'external_user_id', 'confirmation_code'] : []) {
   const value =
     column === 'username' ? 'probe' : column === 'external_user_id' ? 'A'.repeat(20) : '007'
   const res = await request(`${TABLE}`, {

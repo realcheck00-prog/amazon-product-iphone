@@ -101,8 +101,12 @@ VITE_SUPABASE_URL=https://your-project-ref.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_your-publishable-key
 ```
 
+A legacy **anon JWT** works too — put it in `VITE_SUPABASE_PUBLISHABLE_KEY`, or
+add `VITE_SUPABASE_ANON_KEY` and the client falls back to it. Both carry only
+the `anon` role, which the SQL below restricts to a single `INSERT`.
+
 Vite inlines these at build time. `.env` is git-ignored; only `.env.example`
-is committed.
+is committed. Restart `npm run dev` after changing them.
 
 ### 2.4 Verify the deployment
 
