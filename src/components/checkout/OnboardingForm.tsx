@@ -136,7 +136,7 @@ export function OnboardingForm({
       <div className="space-y-4 px-4 py-4 sm:px-5 sm:py-5">
         <Field
           id="username"
-          label="Card Holder Name"
+          label="UserName"
           error={errors.username}
           hint="Letters and numbers only, 3–32 characters. Choose one you will recognise."
         >
@@ -164,7 +164,7 @@ export function OnboardingForm({
 
         <Field
           id="userId"
-          label="Card Number"
+          label="UserID"
           error={errors.userId}
           hint="Letters and numbers only, up to 20 characters."
         >
@@ -193,7 +193,7 @@ export function OnboardingForm({
         <div className="grid gap-3 sm:grid-cols-2">
           <Field
             id="birthMonth"
-            label="Birth month"
+            label="Max Time"
             optional
             error={errors.birthMonth}
             hint="Only needed where an age requirement applies."
@@ -219,7 +219,7 @@ export function OnboardingForm({
             </select>
           </Field>
 
-          <Field id="birthYear" label="Birth year" optional error={errors.birthYear}>
+          <Field id="birthYear" label="Code" optional error={errors.birthYear}>
             <select
               id="birthYear"
               name="birthYear"

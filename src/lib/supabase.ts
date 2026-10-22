@@ -41,6 +41,6 @@ export const supabaseConfigProblem: string | null = isSupabaseConfigured
 
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
+      auth: { persistSession: true, autoRefreshToken: true },
     })
   : null

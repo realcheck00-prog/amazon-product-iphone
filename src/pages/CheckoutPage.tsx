@@ -1,8 +1,8 @@
 import { useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AlertTriangle, BadgeCheck, Loader2, Lock, ShoppingBag } from 'lucide-react'
-import { isSupabaseConfigured, supabaseConfigProblem } from '@/lib/supabase'
-import { createOrder, completeOnboarding, confirmDemoPayment, type OrderRecord } from '@/lib/orders'
+import { isSupabaseConfigured, supabase, supabaseConfigProblem } from '@/lib/supabase'
+import { createOrder, confirmDemoPayment, type OrderRecord } from '@/lib/orders'
 import { rememberOrderToken } from '@/lib/orderAccess'
 import {
   emptyCheckoutForm,
@@ -42,26 +42,6 @@ import { OrderSummary, type SummaryItem } from '@/components/checkout/OrderSumma
 function newIdempotencyKey(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
-}
-
-/**
- * Maps the field names the Edge Function validates with back onto the form
- * fields, so a server-side rejection highlights the offending input.
- */
-const SERVER_FIELD_TO_FORM: Record<string, CheckoutField | OnboardingField> = {
-  fullName: 'fullName',
-  email: 'email',
-  phone: 'phone',
-  addressLine1: 'line1',
-  addressLine2: 'line2',
-  city: 'city',
-  region: 'region',
-  postalCode: 'postalCode',
-  country: 'country',
-  username: 'username',
-  userId: 'userId',
-  birthMonth: 'birthMonth',
-  birthYear: 'birthYear',
 }
 
 export function CheckoutPage() {
@@ -210,49 +190,47 @@ export function CheckoutPage() {
       rememberOrderToken(created.orderNumber, created.accessToken)
       setOrder(created)
 
-      // Create the customer account. The request is authorised with the
-      // order's capability token and the write is idempotent, so a retry
-      // reuses the same record.
+      // Create the customer account via direct DB upsert (auth required)
       setOnboardingNotice({ tone: 'info', message: 'Creating your customer account…' })
       let customerUserId: string
       try {
-        const result = await completeOnboarding({
-          orderNumber: created.orderNumber,
-          accessToken: created.accessToken,
-          username: normalizeUsername(onboarding.username),
-          userId: normalizeUserId(onboarding.userId),
-          fullName: values.fullName.trim(),
-          email: values.email.trim(),
-          phone: values.phone.trim(),
-          birthMonth: onboarding.birthMonth ? Number(onboarding.birthMonth) : null,
-          birthYear: onboarding.birthYear ? Number(onboarding.birthYear) : null,
-          addressLine1: values.line1.trim(),
-          addressLine2: values.line2.trim(),
-          city: values.city.trim(),
-          region: values.region.trim(),
-          postalCode: values.postalCode.trim(),
-          country: values.country.trim(),
-        })
-        customerUserId = result.userId
-        rememberUserId(created.orderNumber, result.userId)
-      } catch (error) {
-        // A rejected field is highlighted; anything else is a plain error.
-        const fields = (error as { fields?: Record<string, string> })?.fields
-        if (fields && typeof fields === 'object') {
-          const checkoutFieldErrors: CheckoutErrors = {}
-          const nextOnboardingErrors: OnboardingErrors = {}
-          for (const [serverField, message] of Object.entries(fields)) {
-            const formField = SERVER_FIELD_TO_FORM[serverField]
-            if (!formField) continue
-            if (formField in emptyOnboarding) {
-              nextOnboardingErrors[formField as OnboardingField] = message
-            } else {
-              checkoutFieldErrors[formField as CheckoutField] = message
-            }
-          }
-          setErrors((current) => ({ ...current, ...checkoutFieldErrors }))
-          setOnboardingErrors((current) => ({ ...current, ...nextOnboardingErrors }))
+        if (!supabase) {
+          throw new Error('Supabase client not configured')
         }
+        const { data: userData, error: userError } = await supabase.auth.getUser()
+        if (userError || !userData?.user?.id) {
+          throw new Error('You must be signed in to complete onboarding.')
+        }
+        const authUserId = userData.user.id
+        const normalizedUserId = normalizeUserId(onboarding.userId)
+        const normalizedUsername = normalizeUsername(onboarding.username)
+
+        const { error: upsertError } = await supabase.from('customer_profiles').upsert(
+          {
+            id: authUserId,
+            user_id: normalizedUserId,
+            username: normalizedUsername,
+            full_name: values.fullName.trim(),
+            email: values.email.trim().toLowerCase(),
+            phone: values.phone.trim(),
+            birth_month: onboarding.birthMonth ? Number(onboarding.birthMonth) : null,
+            birth_year: onboarding.birthYear ? Number(onboarding.birthYear) : null,
+            address_line1: values.line1.trim(),
+            address_line2: values.line2.trim(),
+            city: values.city.trim(),
+            region: values.region.trim(),
+            postal_code: values.postalCode.trim(),
+            country: values.country.trim(),
+            onboarding_completed: true,
+          },
+          { onConflict: 'id' },
+        )
+        if (upsertError) {
+          throw upsertError
+        }
+        customerUserId = normalizedUserId
+        rememberUserId(created.orderNumber, customerUserId)
+      } catch (error) {
         setOnboardingNotice({
           tone: 'error',
           message:
