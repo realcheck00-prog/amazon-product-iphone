@@ -4,11 +4,18 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  Download,
   Loader2,
   Package,
 } from 'lucide-react'
 import { getOrder, type OrderRecord } from '@/lib/orders'
 import { getOrderToken } from '@/lib/orderAccess'
+import { getRememberedCustomerReference } from '@/lib/onboarding'
+import {
+  downloadCsvFile,
+  getRememberedCsvDownload,
+  type CsvDownload,
+} from '@/lib/csvExport'
 import { formatCents } from '@/lib/format'
 import { storefront } from '@/data/product'
 import { Button } from '@/components/ui/Button'
@@ -121,6 +128,10 @@ function SuccessPanel({ order }: { order: OrderRecord }) {
 
       <OrderDetails order={order} />
 
+      <CustomerReference orderNumber={order.orderNumber} />
+
+      <AccountExport orderNumber={order.orderNumber} />
+
 <div className="px-6 pb-6">
           <Link to="/" className="mt-4 block">
             <Button block size="lg" variant="primary">
@@ -128,6 +139,86 @@ function SuccessPanel({ order }: { order: OrderRecord }) {
             </Button>
           </Link>
         </div>
+    </div>
+  )
+}
+
+/**
+ * The customer reference issued by the backend when the account was created.
+ * It is kept in the session so the confirmation screen can show it; nothing
+ * is read from the URL, so it cannot be tampered with.
+ */
+function CustomerReference({ orderNumber }: { orderNumber: string }) {
+  const [reference, setReference] = useState<string | null>(null)
+
+  useEffect(() => {
+    setReference(getRememberedCustomerReference(orderNumber))
+  }, [orderNumber])
+
+  if (!reference) return null
+
+  return (
+    <div className="border-t border-line-soft px-6 py-5">
+      <p className="text-sm font-semibold text-ink-2">Customer reference</p>
+      <p className="mt-0.5 font-mono text-sm text-ink">{reference}</p>
+      <p className="mt-1 text-xs leading-relaxed text-ink-3">
+        Quote this reference if you contact us about your account. Our team will confirm your
+        account by phone.
+      </p>
+    </div>
+  )
+}
+
+/**
+ * The account details were exported to a local CSV file, so the confirmation
+ * screen offers the file again — the browser sometimes blocks the automatic
+ * download that happened on the checkout page.
+ */
+function AccountExport({ orderNumber }: { orderNumber: string }) {
+  const [download, setDownload] = useState<CsvDownload | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setDownload(getRememberedCsvDownload(orderNumber))
+  }, [orderNumber])
+
+  if (!download) return null
+
+  function handleDownload() {
+    if (!download) return
+    try {
+      const started = downloadCsvFile(download.filename, download.csv)
+      setError(
+        started
+          ? null
+          : 'Your browser blocked the download. Allow downloads for this site and try again.',
+      )
+    } catch {
+      setError('Your browser blocked the download. Allow downloads for this site and try again.')
+    }
+  }
+
+  return (
+    <div className="space-y-2 border-t border-line-soft px-6 py-5">
+      <p className="text-sm font-semibold text-ink-2">Your account details (CSV)</p>
+      <p className="text-xs leading-relaxed text-ink-3">
+        A copy of your customer reference and username was saved to{' '}
+        <span className="font-mono text-ink-2">{download.filename}</span> on this device. Nothing
+        was uploaded from your browser.
+      </p>
+      <Button
+        variant="secondary"
+        size="sm"
+        leadingIcon={<Download className="size-3.5" aria-hidden />}
+        onClick={handleDownload}
+      >
+        Download account details (CSV)
+      </Button>
+      {error ? (
+        <p role="alert" className="text-xs font-medium text-deal">
+          {error}
+        </p>
+      ) : null}
     </div>
   )
 }

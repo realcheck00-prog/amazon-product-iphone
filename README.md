@@ -1,13 +1,16 @@
 # amazon — iPhone Pro Max demo storefront
 
 A React + Vite + TypeScript + Tailwind CSS demo storefront with a complete,
-responsive guest checkout flow backed by Supabase (Postgres + Edge Functions).
+responsive guest checkout flow. Orders are created with Supabase (Postgres +
+Edge Functions); the submitted form details are recorded in a Google Sheet
+through a Google Apps Script web app.
 
 - **Product:** Apple iPhone 17 Pro Max 256 GB (Cosmic Orange)
 - **Price:** **$100.00 USD** (stored everywhere as `10000` integer cents)
 - **Payment:** **DEMO only** — simulated, clearly labelled, no real charge
 - **Checkout:** `/checkout` (guest, no account required)
 - **Confirmation:** `/order-success` (server-verified)
+- **Form submissions:** Google Sheet via Apps Script (see §8)
 
 > This is an unaffiliated demo interface. It does not use, embed, or redirect to
 > Amazon checkout. The reference URL was used for visual inspiration only.
@@ -33,8 +36,10 @@ responsive guest checkout flow backed by Supabase (Postgres + Edge Functions).
 | `src/pages/CheckoutPage.tsx` | Checkout with two-column responsive layout |
 | `src/pages/OrderSuccessPage.tsx` | Success / pending screen |
 | `src/components/cart/CartDrawer.tsx` | Slide-over cart with qty + remove |
-| `src/components/checkout/*` | Header, form field, order summary, payment-details form |
-| `src/lib/paymentCard.ts` | Card brand detection, MM/YY + CVV + ZIP formatting/validation (client-only) |
+| `src/components/checkout/*` | Header, form field, order summary, billing-details form |
+| `src/lib/billingDetails.ts` | Billing-metadata formatting/validation — cardholder name + US ZIP only (client-only) |
+| `src/lib/googleSheets.ts` | Posts one submission to the Apps Script web app (no credentials in the browser) |
+| `src/lib/csvExport.ts` | Local CSV copy of a submission — RFC 4180 escaping + formula-injection guard |
 | `src/App.tsx` | Router (`/`, `/checkout`, `/order-success`) |
 
 ### Backend (Supabase)
@@ -50,6 +55,10 @@ responsive guest checkout flow backed by Supabase (Postgres + Edge Functions).
 | `supabase/functions/_shared/*` | CORS, authoritative catalog, serialization |
 | `supabase/config.toml` | Disables JWT verification for the guest-facing functions |
 | `scripts/verify-save-billing-details.mjs` | Post-deploy check of the function, the table and the billing endpoint (no dependencies) |
+| `scripts/test-csv-export.mjs` | Tests for the CSV escaping and the formula-injection guard |
+| `scripts/test-sheet-submission.mjs` | Tests for the Apps Script request/response contract (offline) |
+| `google-apps-script/save-checkout-submission.gs` | Apps Script web app that appends one row per submission to a Google Sheet |
+| `google-apps-script/appsscript.json` | Apps Script manifest (`spreadsheets` scope only) |
 | `vercel.json` | SPA rewrites so `/checkout` and `/order-success` deep-link correctly |
 | `.env.example` | Environment variable placeholders (no secrets) |
 
@@ -249,19 +258,22 @@ routes resolve on a hard refresh.
 
 ## 5. Payment
 
-No real payment provider is configured in this repository. Checkout runs in
-**DEMO mode**:
+No real payment provider is configured in this repository, and the checkout form
+does not collect payment credentials at all. Checkout runs in **DEMO mode**:
 
 - The order is created with `order_status = pending_payment` and
   `payment_status = pending`.
-- The payment step is an iOS-inspired **Payment Details** card form (name,
-  number, MM/YY, CVV, US ZIP) with brand detection and inline validation.
-  Card number, expiry and CVV are checked in the browser only, cleared after a
-  successful order, and **no money is charged**.
-- On submit, only the **cardholder name**, **billing ZIP** and a server-side
-  **submission timestamp** are saved, via `save-billing-details` into
-  `payment_billing_details`. The UI shows a saving/success/error message for
-  this step; it is explicitly **not** a payment confirmation.
+- The payment step is an iOS-inspired **Billing Details** card form that asks
+  for the **cardholder name** and the **US billing ZIP** only, with a visible
+  notice that no payment is processed. There is no card-number, expiry, CVV or
+  PIN input anywhere in the form, so those credentials can never be entered,
+  sent or stored, and **no money is charged**.
+- On submit, the permitted details (name, email, phone, cardholder name,
+  billing ZIP, shipping city/country and the order reference) are posted to a
+  **Google Apps Script web app** that appends one row to a Google Sheet, and a
+  **local CSV copy** is downloaded to the user's own device. Nothing is
+  uploaded to Supabase from this workflow. The UI shows the outcome of the
+  submission; it is explicitly **not** a payment confirmation.
 - Clicking **Pay $100.00** calls `confirm-demo-payment`, which is the **only**
   code path that sets `payment_status = paid` / `order_status = confirmed`.
 - **Simulate failed payment** sets `payment_status = failed` while leaving the
@@ -278,13 +290,11 @@ No real payment provider is configured in this repository. Checkout runs in
 3. Add a **webhook** Edge Function that verifies the provider signature and,
    only after verified confirmation, updates `payment_status = paid` /
    `order_status = confirmed`.
-
-No payment provider is integrated, so the card form is client-side only:
-raw card numbers, CVVs and PINs are never sent to Supabase or any other
-server, never stored, never logged, and are dropped from memory once the
-order is confirmed. The only persisted fields are cardholder name, billing
-ZIP and the submission timestamp. Real card entry must not be used until a
-provider (see above) is integrated.
+4. Add a hosted payment element to `src/components/checkout/BillingDetailsForm.tsx`.
+   Until such a provider exists, the form must stay credential-free: raw card
+   numbers, CVVs and PINs are never sent to Supabase or any other server, never
+   stored and never logged. The only persisted fields are cardholder name,
+   billing ZIP and the submission timestamp.
 
 ---
 
@@ -311,11 +321,34 @@ provider (see above) is integrated.
   other key — a card number, CVV, PIN or expiry — is rejected with `400`
   *before* a database write is attempted, so sensitive data cannot be stored
   even if a future client change starts sending it.
+- The checkout form has **no** card-number, expiry, CVV or PIN input. The
+  browser cannot collect a payment credential because there is nowhere to type
+  one, and the form displays a notice that no payment is processed.
+- The submission posted to the Apps Script web app is an **allow-list**:
+  `submissionId`, `orderReference`, `fullName`, `email`, `phone`,
+  `cardholderName`, `billingPostalCode`, `shippingCity`, `shippingCountry`.
+  The script rejects any other key — a card number, CVV, PIN, expiry or the
+  order capability token — *before* a row is written, so a payment credential
+  cannot be stored in the sheet even if a future client change sends one.
+- The Apps Script web app holds **no credential in the frontend**: the browser
+  only knows the deployment URL, which is configured through
+  `VITE_GOOGLE_SHEETS_ENDPOINT` and kept in the environment. The script itself
+  reads the spreadsheet ID from its own **script properties** and needs only
+  the `spreadsheets` scope.
+- Every sheet column is written with the plain-text number format, and a value
+  that starts with `=`, `+`, `-` or `@` is additionally prefixed with a single
+  quote — a submitted text can never execute as a spreadsheet formula.
+- The sheet row is de-duplicated on `submissionId`, which is the same
+  idempotency key the order uses. A retry therefore reuses the existing row
+  instead of appending a second one.
 - Repeated submissions of the same checkout reuse one `idempotency_key`, so the
-  database returns the existing order instead of creating a duplicate.
-  `save-billing-details` never writes to `orders` at all — it only reads the
-  order id and writes the billing row, so retrying can never create a second
-  order.
+  database returns the existing order instead of creating a duplicate. A failed
+  sheet submission stops the checkout with an error instead of silently
+  dropping the details, and pressing Pay again reuses the same order and the
+  same sheet row.
+- The local CSV copy is generated in the browser: RFC 4180 quoting, embedded
+  quotes doubled, and the same formula-injection guard. It is a copy for the
+  customer — it is not a second store.
 - Database errors are returned as non-2xx responses; the UI shows the error and
   never a false success.
 
@@ -330,8 +363,8 @@ See §9 of the implementation requirements. Manual verification:
    persists across reloads; quantities can change and items can be removed.
 3. **Proceed to Checkout** from the cart includes the correct product/quantity.
 4. Empty/invalid form fields show inline errors and block submission —
-   including the card fields (brand-aware number length + Luhn, MM/YY not in
-   the past, 3- or 4-digit CVV, 5-digit ZIP).
+   including the billing fields (cardholder name required, ≤ 120 characters,
+   5-digit US ZIP or ZIP+4).
 5. The displayed price is exactly **$100.00**.
 6. Changing a client price in dev tools does not change the server total.
 7. Orders and order items appear in the `orders` / `order_items` tables.
@@ -341,13 +374,155 @@ See §9 of the implementation requirements. Manual verification:
 11. The green tick appears only after a successful server confirmation.
 12. Layouts work at mobile (< 640px), tablet (~768px) and desktop (≥ 1024px).
 13. `npm run build` passes.
-14. After checkout, `payment_billing_details` contains one row per order with
-    **only** the cardholder name, billing ZIP and timestamp — and no card
-    number, CVV, expiry or PIN.
-15. The payment form shows “Saving your billing details…” then a success or
+14. After checkout, the Google Sheet contains one row per submission with
+    **only** the permitted fields and a server-generated timestamp — and no
+    card number, CVV, expiry or PIN.
+15. The billing form shows “Recording your submission…” and then a success or
     error message; double-clicking **Pay $100.00** still creates one order and
-    one billing row.
-16. `payment_billing_details` cannot be read or written from the anon key
-    (try it in the SQL Editor as `anon` or via `supabase-js` in the browser).
-17. `node scripts/verify-save-billing-details.mjs` reports every check as
-    **PASS** (see §2.6).
+    one sheet row.
+16. A submission that contains a card number is rejected by the Apps Script
+    with `ok: false` and nothing is written.
+17. Sending the same `submissionId` twice returns `duplicate: true` and leaves
+    exactly one row in the sheet.
+18. The checkout form displays a **Demo** badge and a notice that no payment is
+    processed, and contains no card-number, expiry, CVV or PIN input.
+19. `npm test` passes (CSV escaping + the Apps Script request/response
+    contract).
+20. The Supabase path still works: `node scripts/verify-save-billing-details.mjs`
+    reports every check as **PASS** (see §2.6).
+
+---
+
+## 8. Form submissions → Google Sheet (Apps Script)
+
+The checkout form records each submission in a Google Sheet. The browser posts
+the permitted fields to a **Google Apps Script web app**, which validates
+them, de-duplicates them and appends one row. The order itself is still
+created in Supabase — orders are a separate concern and are not affected.
+
+### 8.1 What is written
+
+| Column | Source | Notes |
+| --- | --- | --- |
+| Submission Timestamp | Apps Script | Server-generated (UTC, ISO 8601) |
+| Order Reference | `create-order` | e.g. `SF-20261021-9CC80474` |
+| Submission Id | client idempotency key | Used to de-duplicate rows |
+| Full Name | form | |
+| Email | form | |
+| Phone | form | |
+| Cardholder Name | form | |
+| Billing ZIP Code | form | US ZIP / ZIP+4 |
+| Shipping City | form | |
+| Shipping Country | form | |
+
+Never written: card number, CVV, PIN, expiry, the street address, the order
+capability token, any Google credential. The script rejects a request body
+that contains any key outside the list above.
+
+### 8.2 Create the spreadsheet
+
+1. Open <https://sheets.new> and create the spreadsheet you want to use.
+2. The script creates and owns the `Submissions` tab (and the header row) on
+   the first submission — you do not have to add anything by hand. If you
+   prefer to set the columns up yourself, create a tab named `Submissions`
+   whose row 1 contains **exactly** these headers, in this order:
+   `Submission Timestamp`, `Order Reference`, `Submission Id`, `Full Name`,
+   `Email`, `Phone`, `Cardholder Name`, `Billing ZIP Code`, `Shipping City`,
+   `Shipping Country`.
+3. Note the spreadsheet ID: it is the part between `/d/` and `/edit` in the
+   URL, `https://docs.google.com/spreadsheets/d/<SPREADSHEET_ID>/edit`.
+
+### 8.3 Deploy the Apps Script web app
+
+1. Go to <https://script.google.com> → **New project**.
+2. Delete the placeholder `Code.gs` and paste the contents of
+   `google-apps-script/save-checkout-submission.gs`.
+3. Add the manifest: **Project Settings → Show "appsscript.json" manifest file
+   in editor** → replace it with `google-apps-script/appsscript.json`.
+4. Set the configuration (this is where the configuration lives — it is not in
+   the source file):
+   - **Project Settings → Script Properties → Add script property**
+     - `SPREADSHEET_ID` = the ID from step 2.3
+     - `SHEET_NAME` = `Submissions` (optional)
+   - Or run `setupSpreadsheet()` once from the editor and answer the prompts.
+5. **Deploy → New deployment → Web app**:
+   - *Execute as*: **Me**
+   - *Who has access*: **Anyone** (required — the browser posts anonymously)
+6. Press **Authorize access** and approve the `spreadsheets` permission. This
+   is the one-time Google authorization you have to complete.
+7. Copy the **Web app URL** — it ends in `/exec`.
+
+### 8.4 Configure the frontend
+
+```bash
+# .env (never committed)
+VITE_GOOGLE_SHEETS_ENDPOINT=https://script.google.com/macros/s/AKfycb.../exec
+```
+
+On Vercel: **Project → Settings → Environment Variables** → add
+`VITE_GOOGLE_SHEETS_ENDPOINT` → redeploy (Vite inlines the value at build
+time). Add it to `.env.example` only as a placeholder.
+
+The URL is not a credential, but it **is** a capability URL: anyone who has it
+can append a row. Keep it out of public repositories and rotate it (delete the
+deployment, deploy a new one) if it leaks.
+
+### 8.5 Test it
+
+Health check — open the deployment URL in a browser:
+
+```json
+{"ok":true,"service":"checkout-submission","spreadsheetConfigured":true,"sheetName":"Submissions", ...}
+```
+
+Successful submission:
+
+```bash
+curl -s -X POST "$VITE_GOOGLE_SHEETS_ENDPOINT" \
+  -H 'Content-Type: text/plain;charset=utf-8' \
+  -d '{"submissionId":"manual-test-1","orderReference":"SF-TEST-1","fullName":"Alex Morgan","email":"alex@example.com","phone":"+15550109999","cardholderName":"Alex Morgan","billingPostalCode":"10001","shippingCity":"New York","shippingCountry":"United States"}'
+# {"ok":true,"saved":true,"duplicate":false,"row":2,"timestamp":"..."}
+```
+
+Failure — an invalid field is rejected and nothing is written:
+
+```bash
+curl -s -X POST "$VITE_GOOGLE_SHEETS_ENDPOINT" -H 'Content-Type: text/plain;charset=utf-8' \
+  -d '{"submissionId":"manual-test-2","orderReference":"SF-TEST-2","fullName":"A","email":"not-an-email","phone":"1","cardholderName":"A","billingPostalCode":"1"}'
+# {"ok":false,"error":"Field \"fullName\" is required.","field":"fullName"}
+```
+
+Duplicate — the same `submissionId` twice returns the existing row and does
+**not** append a second one:
+
+```bash
+# repeat the successful submission with the same submissionId
+# {"ok":true,"saved":true,"duplicate":true,"row":2,"timestamp":"..."}
+```
+
+Formula injection — a name that starts with `=` is stored as text:
+
+```bash
+# cardholderName "=IMPORTXML(...)" is written as "'=IMPORTXML(...)" and the
+# column is plain text, so it is never evaluated.
+```
+
+Permissions — the script runs as the account that deployed it, so that account
+needs edit access to the spreadsheet. To check: share the sheet with that
+Google account, or deploy from the sheet's owner. The `spreadsheets` scope in
+`appsscript.json` is the only scope requested; the script never asks for
+Drive access and never reads a credential from the frontend.
+
+### 8.6 If you need central collection without Apps Script
+
+The repository already contains a second, fully server-side option: the
+`save-billing-details` Edge Function with the `payment_billing_details` table
+(§2.5, §2.6). It runs in Supabase, authorises the caller with the per-order
+capability token, writes with the service role and is protected by RLS with no
+policies.
+
+Either way the rule is the same: **the frontend never holds a credential.** The
+browser may only contain the Supabase *anon* key (safe by design) or the
+deployment URL of a web app that authorises itself. A service-role key, an
+OAuth refresh token or a private key must never be embedded in frontend code
+or committed to the repository.

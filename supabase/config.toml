@@ -3,6 +3,10 @@
 # These functions are called by anonymous guest customers, so JWT verification
 # is disabled. Access control is enforced inside each function via the
 # service-role key plus the per-order capability token.
+#
+# `complete-onboarding` follows the same rule: it is a guest-facing endpoint
+# that authorises the caller with the per-order capability token, exactly like
+# `get-order` and `confirm-demo-payment`.
 
 project_id = "amazon-product-iphone"
 
@@ -15,5 +19,5 @@ verify_jwt = false
 [functions.confirm-demo-payment]
 verify_jwt = false
 
-[functions.save-billing-details]
+[functions.complete-onboarding]
 verify_jwt = false

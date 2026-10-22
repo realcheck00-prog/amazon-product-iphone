@@ -2,12 +2,7 @@ import { useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react
 import { Link, useNavigate } from 'react-router-dom'
 import { AlertTriangle, BadgeCheck, Loader2, Lock, ShoppingBag } from 'lucide-react'
 import { isSupabaseConfigured, supabaseConfigProblem } from '@/lib/supabase'
-import {
-  createOrder,
-  confirmDemoPayment,
-  saveBillingDetails,
-  type OrderRecord,
-} from '@/lib/orders'
+import { createOrder, confirmDemoPayment, type OrderRecord } from '@/lib/orders'
 import { rememberOrderToken } from '@/lib/orderAccess'
 import {
   emptyCheckoutForm,
@@ -18,25 +13,54 @@ import {
   type CheckoutFormValues,
 } from '@/lib/validation'
 import {
-  emptyPaymentCard,
-  validatePaymentCard,
-  type PaymentCardErrors,
-  type PaymentCardField,
-  type PaymentCardForm,
-} from '@/lib/paymentCard'
+  completeOnboarding,
+  emptyOnboarding,
+  normalizeUsername,
+  rememberCustomerReference,
+  validateOnboarding,
+  type OnboardingErrors,
+  type OnboardingField,
+  type OnboardingValues,
+} from '@/lib/onboarding'
 import { formatCents } from '@/lib/format'
+import {
+  buildAccountCsv,
+  buildCsvFilename,
+  downloadCsvFile,
+  rememberCsvDownload,
+  type CsvDownload,
+} from '@/lib/csvExport'
 import { getBuyNowItems, clearBuyNowItems } from '@/lib/buyNow'
 import { useCart } from '@/state/cart'
 import { Button } from '@/components/ui/Button'
 import { Panel } from '@/components/ui/Panel'
 import { CheckoutHeader } from '@/components/checkout/CheckoutHeader'
 import { FormField } from '@/components/checkout/FormField'
-import { PaymentDetailsForm, type PaymentNotice } from '@/components/checkout/PaymentDetailsForm'
+import { OnboardingForm, type OnboardingNotice } from '@/components/checkout/OnboardingForm'
 import { OrderSummary, type SummaryItem } from '@/components/checkout/OrderSummary'
 
 function newIdempotencyKey(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+/**
+ * Maps the field names the Edge Function validates with back onto the form
+ * fields, so a server-side rejection highlights the offending input.
+ */
+const SERVER_FIELD_TO_FORM: Record<string, CheckoutField | OnboardingField> = {
+  fullName: 'fullName',
+  email: 'email',
+  phone: 'phone',
+  addressLine1: 'line1',
+  addressLine2: 'line2',
+  city: 'city',
+  region: 'region',
+  postalCode: 'postalCode',
+  country: 'country',
+  username: 'username',
+  birthMonth: 'birthMonth',
+  birthYear: 'birthYear',
 }
 
 export function CheckoutPage() {
@@ -54,11 +78,13 @@ export function CheckoutPage() {
 
   const [values, setValues] = useState<CheckoutFormValues>(emptyCheckoutForm)
   const [errors, setErrors] = useState<CheckoutErrors>({})
-  const [card, setCard] = useState<PaymentCardForm>(emptyPaymentCard)
-  const [cardErrors, setCardErrors] = useState<PaymentCardErrors>({})
+  const [onboarding, setOnboarding] = useState<OnboardingValues>(emptyOnboarding)
+  const [onboardingErrors, setOnboardingErrors] = useState<OnboardingErrors>({})
   const [submitting, setSubmitting] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
-  const [billingNotice, setBillingNotice] = useState<PaymentNotice | null>(null)
+  const [onboardingNotice, setOnboardingNotice] = useState<OnboardingNotice | null>(null)
+  const [csvDownload, setCsvDownload] = useState<CsvDownload | null>(null)
+  const [customerReference, setCustomerReference] = useState<string | null>(null)
   const [order, setOrder] = useState<OrderRecord | null>(null)
   const idempotencyRef = useRef<string>(newIdempotencyKey())
 
@@ -98,9 +124,9 @@ export function CheckoutPage() {
     setErrors((current) => ({ ...current, [field]: next[field] }))
   }
 
-  function updateCardField(field: PaymentCardField, value: string) {
-    setCard((current) => ({ ...current, [field]: value }))
-    setCardErrors((current) => {
+  function updateOnboardingField(field: OnboardingField, value: string) {
+    setOnboarding((current) => ({ ...current, [field]: value }))
+    setOnboardingErrors((current) => {
       if (!current[field]) return current
       const next = { ...current }
       delete next[field]
@@ -108,9 +134,32 @@ export function CheckoutPage() {
     })
   }
 
-  function handleCardBlur(field: PaymentCardField) {
-    const next = validatePaymentCard(card)
-    setCardErrors((current) => ({ ...current, [field]: next[field] }))
+  function handleOnboardingBlur(field: OnboardingField) {
+    const next = validateOnboarding(onboarding)
+    setOnboardingErrors((current) => ({ ...current, [field]: next[field] }))
+  }
+
+  /** Downloads the exported CSV again — the user-facing download action. */
+  function handleCsvDownload() {
+    if (!csvDownload) return
+    let started = false
+    try {
+      started = downloadCsvFile(csvDownload.filename, csvDownload.csv)
+    } catch {
+      started = false
+    }
+    setOnboardingNotice(
+      started
+        ? {
+            tone: 'success',
+            message: `Downloaded ${csvDownload.filename} to this device. Nothing was uploaded — the file is on your computer only.`,
+          }
+        : {
+            tone: 'error',
+            message:
+              'Your browser blocked the download. Allow downloads for this site and try again.',
+          },
+    )
   }
 
   async function handleContinue(event: FormEvent) {
@@ -119,24 +168,16 @@ export function CheckoutPage() {
     setServerError(null)
 
     const nextErrors = validateCheckout(values)
-    const nextCardErrors = validatePaymentCard(card)
+    const nextOnboardingErrors = validateOnboarding(onboarding)
     setErrors(nextErrors)
-    setCardErrors(nextCardErrors)
-    if (hasErrors(nextErrors) || Object.keys(nextCardErrors).length > 0) {
-      const firstInvalid = [
-        ...Object.keys(nextErrors),
-        ...Object.keys(nextCardErrors),
-      ][0]
+    setOnboardingErrors(nextOnboardingErrors)
+    if (hasErrors(nextErrors) || Object.keys(nextOnboardingErrors).length > 0) {
+      const firstInvalid = [...Object.keys(nextErrors), ...Object.keys(nextOnboardingErrors)][0]
       document.getElementById(firstInvalid)?.focus()
       return
     }
 
-    // Snapshot the only two card fields we are allowed to persist. The card
-    // number, expiry and CVV never leave this component's state.
-    const cardholderName = card.cardholderName.trim()
-    const billingPostalCode = card.billingZip.trim()
-
-    setBillingNotice(null)
+    setOnboardingNotice(null)
     setSubmitting(true)
     try {
       // Retry-safe: if an order already exists for this checkout attempt,
@@ -169,37 +210,107 @@ export function CheckoutPage() {
       rememberOrderToken(created.orderNumber, created.accessToken)
       setOrder(created)
 
-      // Persist only non-sensitive billing metadata (name + ZIP + timestamp).
-      // Success is shown ONLY after the server confirms the insert. If the
-      // save fails we stop here so the error stays on screen instead of being
-      // wiped by navigation. Retrying is safe: the idempotency key reuses the
-      // same order and the table's unique order_id upserts in place.
-      setBillingNotice({ tone: 'info', message: 'Saving your billing details…' })
+      // Create the customer account. The reference is issued by the database,
+      // the request is authorised with the order's capability token and the
+      // write is idempotent, so a retry reuses the same record.
+      setOnboardingNotice({ tone: 'info', message: 'Creating your customer account…' })
+      let customerRef: string
       try {
-        const saved = await saveBillingDetails({
+        const result = await completeOnboarding({
           orderNumber: created.orderNumber,
           accessToken: created.accessToken,
-          cardholderName,
-          billingPostalCode,
+          username: normalizeUsername(onboarding.username),
+          fullName: values.fullName.trim(),
+          email: values.email.trim(),
+          phone: values.phone.trim(),
+          birthMonth: onboarding.birthMonth ? Number(onboarding.birthMonth) : null,
+          birthYear: onboarding.birthYear ? Number(onboarding.birthYear) : null,
+          addressLine1: values.line1.trim(),
+          addressLine2: values.line2.trim(),
+          city: values.city.trim(),
+          region: values.region.trim(),
+          postalCode: values.postalCode.trim(),
+          country: values.country.trim(),
         })
-        if (!saved.ok) throw new Error('The server did not confirm the save.')
-        setBillingNotice({
-          tone: 'success',
-          message: 'Billing details saved with your order. This is not a payment confirmation.',
-        })
+        customerRef = result.customerReference
+        setCustomerReference(result.customerReference)
+        rememberCustomerReference(created.orderNumber, result.customerReference)
       } catch (error) {
-        setBillingNotice({
+        // A rejected field is highlighted; anything else is a plain error.
+        const fields = (error as { fields?: Record<string, string> })?.fields
+        if (fields && typeof fields === 'object') {
+          const checkoutFieldErrors: CheckoutErrors = {}
+          const nextOnboardingErrors: OnboardingErrors = {}
+          for (const [serverField, message] of Object.entries(fields)) {
+            const formField = SERVER_FIELD_TO_FORM[serverField]
+            if (!formField) continue
+            if (formField in emptyOnboarding) {
+              nextOnboardingErrors[formField as OnboardingField] = message
+            } else {
+              checkoutFieldErrors[formField as CheckoutField] = message
+            }
+          }
+          setErrors((current) => ({ ...current, ...checkoutFieldErrors }))
+          setOnboardingErrors((current) => ({ ...current, ...nextOnboardingErrors }))
+        }
+        setOnboardingNotice({
           tone: 'error',
-          message: `Your billing details were NOT saved: ${
-            error instanceof Error ? error.message : 'unknown error'
-          } Fix the cause and press Pay again — no duplicate order will be created.`,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Your customer account could not be created. Please try again.',
         })
         return
       }
 
+      // A local copy for the customer's own device. It is generated in the
+      // browser and never uploaded.
+      const submittedAt = new Date().toISOString()
+      let csv: string
+      let filename: string
+      try {
+        filename = buildCsvFilename(customerRef, submittedAt)
+        csv = buildAccountCsv({
+          submittedAt,
+          customerReference: customerRef,
+          username: normalizeUsername(onboarding.username),
+          verificationStatus: 'pending_review',
+        })
+      } catch (error) {
+        setOnboardingNotice({
+          tone: 'error',
+          message: `Your account details could not be exported: ${
+            error instanceof Error ? error.message : 'unknown error'
+          }. The order was not confirmed — press Pay again to retry.`,
+        })
+        return
+      }
+
+      // Keep the file for this session so it can be downloaded again from the
+      // confirmation screen (this page navigates away right after the export).
+      setCsvDownload({ filename, csv })
+      rememberCsvDownload(created.orderNumber, { filename, csv })
+
+      let downloadStarted = false
+      try {
+        downloadStarted = downloadCsvFile(filename, csv)
+      } catch {
+        downloadStarted = false
+      }
+
+      setOnboardingNotice({
+        tone: 'success',
+        message: [
+          `Your customer account ${customerRef} was created. Our team will confirm it with you by phone.`,
+          downloadStarted
+            ? `A copy was downloaded to this device (${filename}).`
+            : 'Your browser blocked the file download — press “Download account details (CSV)” below to save a copy.',
+        ].join(' '),
+      })
+
       // No payment provider is configured: the demo payment is confirmed
-      // immediately on submit. Card numbers, expiry and CVVs are never sent
-      // anywhere — a real integration would send the customer to the provider.
+      // immediately on submit. Nothing payment-related is transmitted — a real
+      // integration would send the customer to the provider.
       const confirmed = await confirmDemoPayment(
         created.orderNumber,
         created.accessToken,
@@ -208,9 +319,9 @@ export function CheckoutPage() {
       setOrder(confirmed)
 
       if (confirmed.paymentStatus === 'paid' && confirmed.orderStatus === 'confirmed') {
-        // Card details are never transmitted, stored or logged — drop them
-        // from memory now that they are no longer needed.
-        setCard(emptyPaymentCard)
+        // Drop the collected details from memory now that they are no longer
+        // needed.
+        setOnboarding(emptyOnboarding)
         if (source === 'cart') clear()
         clearBuyNowItems()
         navigate(`/order-success?order=${encodeURIComponent(confirmed.orderNumber)}`, {
@@ -374,13 +485,16 @@ export function CheckoutPage() {
               </div>
             </Panel>
 
-            <PaymentDetailsForm
-              values={card}
-              errors={cardErrors}
-              onChange={updateCardField}
-              onBlur={handleCardBlur}
+            <OnboardingForm
+              values={onboarding}
+              errors={onboardingErrors}
+              onChange={updateOnboardingField}
+              onBlur={handleOnboardingBlur}
               disabled={submitting}
-              notice={billingNotice}
+              notice={onboardingNotice}
+              download={csvDownload}
+              onDownload={handleCsvDownload}
+              customerReference={customerReference}
             />
 
             {serverError && (
@@ -395,7 +509,7 @@ export function CheckoutPage() {
 
             <div className="panel flex flex-col items-stretch gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-ink-3">
-                No account needed — continue as a guest.
+                Demo store — nothing is charged.
                 <br />
                 Total due now: <span className="tnum font-semibold text-ink">{formatCents(totalCents)}</span>
               </p>
