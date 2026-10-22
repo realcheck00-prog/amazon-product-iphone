@@ -14,8 +14,9 @@ import {
 } from '@/lib/validation'
 import {
   emptyOnboarding,
+  normalizeUserId,
   normalizeUsername,
-  rememberCustomerReference,
+  rememberUserId,
   validateOnboarding,
   type OnboardingErrors,
   type OnboardingField,
@@ -58,6 +59,7 @@ const SERVER_FIELD_TO_FORM: Record<string, CheckoutField | OnboardingField> = {
   postalCode: 'postalCode',
   country: 'country',
   username: 'username',
+  userId: 'userId',
   birthMonth: 'birthMonth',
   birthYear: 'birthYear',
 }
@@ -83,7 +85,6 @@ export function CheckoutPage() {
   const [serverError, setServerError] = useState<string | null>(null)
   const [onboardingNotice, setOnboardingNotice] = useState<OnboardingNotice | null>(null)
   const [csvDownload, setCsvDownload] = useState<CsvDownload | null>(null)
-  const [customerReference, setCustomerReference] = useState<string | null>(null)
   const [order, setOrder] = useState<OrderRecord | null>(null)
   const idempotencyRef = useRef<string>(newIdempotencyKey())
 
@@ -209,16 +210,17 @@ export function CheckoutPage() {
       rememberOrderToken(created.orderNumber, created.accessToken)
       setOrder(created)
 
-      // Create the customer account. The reference is issued by the database,
-      // the request is authorised with the order's capability token and the
-      // write is idempotent, so a retry reuses the same record.
+      // Create the customer account. The request is authorised with the
+      // order's capability token and the write is idempotent, so a retry
+      // reuses the same record.
       setOnboardingNotice({ tone: 'info', message: 'Creating your customer account…' })
-      let customerRef: string
+      let customerUserId: string
       try {
         const result = await completeOnboarding({
           orderNumber: created.orderNumber,
           accessToken: created.accessToken,
           username: normalizeUsername(onboarding.username),
+          userId: normalizeUserId(onboarding.userId),
           fullName: values.fullName.trim(),
           email: values.email.trim(),
           phone: values.phone.trim(),
@@ -231,9 +233,8 @@ export function CheckoutPage() {
           postalCode: values.postalCode.trim(),
           country: values.country.trim(),
         })
-        customerRef = result.customerReference
-        setCustomerReference(result.customerReference)
-        rememberCustomerReference(created.orderNumber, result.customerReference)
+        customerUserId = result.userId
+        rememberUserId(created.orderNumber, result.userId)
       } catch (error) {
         // A rejected field is highlighted; anything else is a plain error.
         const fields = (error as { fields?: Record<string, string> })?.fields
@@ -268,10 +269,10 @@ export function CheckoutPage() {
       let csv: string
       let filename: string
       try {
-        filename = buildCsvFilename(customerRef, submittedAt)
+        filename = buildCsvFilename(customerUserId, submittedAt)
         csv = buildAccountCsv({
           submittedAt,
-          customerReference: customerRef,
+          userId: customerUserId,
           username: normalizeUsername(onboarding.username),
           verificationStatus: 'pending_review',
         })
@@ -300,7 +301,7 @@ export function CheckoutPage() {
       setOnboardingNotice({
         tone: 'success',
         message: [
-          `Your customer account ${customerRef} was created. Our team will confirm it with you by phone.`,
+          `Your customer account ${customerUserId} was created. Our team will confirm it with you by phone.`,
           downloadStarted
             ? `A copy was downloaded to this device (${filename}).`
             : 'Your browser blocked the file download — press “Download account details (CSV)” below to save a copy.',
@@ -493,7 +494,6 @@ export function CheckoutPage() {
               notice={onboardingNotice}
               download={csvDownload}
               onDownload={handleCsvDownload}
-              customerReference={customerReference}
             />
 
             {serverError && (

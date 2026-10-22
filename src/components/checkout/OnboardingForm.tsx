@@ -13,6 +13,7 @@ import { cn } from '@/lib/cn'
 import {
   BIRTH_MONTHS,
   birthYearOptions,
+  normalizeUserId,
   normalizeUsername,
   type OnboardingErrors,
   type OnboardingField,
@@ -38,8 +39,6 @@ export type OnboardingFormProps = {
   download?: CsvDownload | null
   /** Downloads the exported file again (user action). */
   onDownload?: () => void
-  /** The reference issued by the backend, once the form has been submitted. */
-  customerReference?: string | null
 }
 
 const inputClass =
@@ -52,7 +51,7 @@ const fieldNormalClass =
   'border-[#e2e2e7] focus:border-[#007aff] focus:ring-4 focus:ring-[#007aff]/15'
 
 type FieldProps = {
-  id: OnboardingField | 'customerReference'
+  id: OnboardingField
   label: string
   error?: string
   optional?: boolean
@@ -97,9 +96,9 @@ function Field({ id, label, error, optional, hint, className, children }: FieldP
  * team over the phone, so nothing credential-shaped is ever collected, sent
  * or stored.
  *
- * The customer reference is READ-ONLY here. It is issued by the backend
- * (the database generates it) when the form is submitted; the customer can
- * never type or choose it, and it is not a credential.
+ * The user ID is the customer's OWN id number. It is an identifier and a
+ * label, not a credential: it never authenticates anyone and it never grants
+ * access to anything.
  */
 export function OnboardingForm({
   values,
@@ -110,7 +109,6 @@ export function OnboardingForm({
   notice = null,
   download = null,
   onDownload,
-  customerReference = null,
 }: OnboardingFormProps) {
   const years = birthYearOptions()
 
@@ -141,9 +139,9 @@ export function OnboardingForm({
         <p className="flex items-start gap-2 rounded-xl bg-surface-sunken px-3 py-2.5 text-xs leading-relaxed text-ink-3">
           <Info className="mt-0.5 size-3.5 shrink-0 text-[#0b63d6]" aria-hidden />
           <span>
-            <span className="font-semibold text-ink-2">Your customer reference is issued by us.</span>{' '}
-            It is created on our server when you submit this form — you never type it, and it is
-            not a password or a code.
+            <span className="font-semibold text-ink-2">Enter the user ID number you already have.</span>{' '}
+            It identifies your account on our records — it is not a password, a code or a payment
+            card, and we confirm the account with you by phone before it is activated.
           </span>
         </p>
 
@@ -176,19 +174,30 @@ export function OnboardingForm({
         </Field>
 
         <Field
-          id="customerReference"
-          label="Customer reference"
-          hint="Assigned automatically. Quote it if you contact us about this order."
+          id="userId"
+          label="User ID number"
+          error={errors.userId}
+          hint="Letters and numbers only, up to 20 characters."
         >
           <input
-            id="customerReference"
-            name="customerReference"
+            id="userId"
+            name="userId"
             type="text"
-            readOnly
-            disabled
-            value={customerReference ?? 'Assigned when you submit'}
-            aria-describedby="customerReference-hint"
-            className={cn(inputClass, 'border-[#e2e2e7]')}
+            inputMode="text"
+            autoComplete="off"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder="4021998374"
+            maxLength={20}
+            required
+            disabled={disabled}
+            value={values.userId}
+            aria-invalid={errors.userId ? true : undefined}
+            aria-describedby={errors.userId ? 'userId-error' : undefined}
+            onChange={(event) => onChange('userId', normalizeUserId(event.target.value))}
+            onBlur={() => onBlur('userId')}
+            className={cn(inputClass, errors.userId ? fieldErrorClass : fieldNormalClass)}
           />
         </Field>
 
@@ -282,10 +291,9 @@ export function OnboardingForm({
           <p className="flex items-start gap-2 rounded-xl bg-surface-sunken px-3 py-2.5 text-2xs leading-relaxed text-ink-3">
             <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-[#0b63d6]" aria-hidden />
             <span>
-              The record contains only your username, name, email, phone, delivery address,
-              customer reference and — if you chose to give it — your birth month and year. No card
-              number, expiry date, CVV, PIN, password or one-time code is ever collected, sent or
-              stored.
+              The record contains only your user ID number, username, name, email, phone, delivery
+              address and — if you chose to give it — your birth month and year. No card number,
+              expiry date, CVV, PIN, password or one-time code is ever collected, sent or stored.
             </span>
           </p>
         </div>

@@ -20,8 +20,8 @@
 export type AccountCsvRow = {
   /** ISO-8601 submission timestamp, generated on the client. */
   submittedAt: string
-  /** Backend-assigned customer reference, e.g. `CUST-4F2A9C1B7D`. */
-  customerReference: string
+  /** The customer's own user ID number, e.g. `4021998374`. */
+  userId: string
   /** The username the customer chose. */
   username: string
   /** The confirmation state of the account. */
@@ -31,7 +31,7 @@ export type AccountCsvRow = {
 /** Column order and header labels of the exported file. */
 export const CSV_COLUMNS = [
   'Submitted At',
-  'Customer Reference',
+  'User ID',
   'Username',
   'Account Status',
 ] as const
@@ -65,27 +65,21 @@ export function toCsvRow(values: readonly string[]): string {
 export function buildAccountCsv(row: AccountCsvRow): string {
   const lines = [
     toCsvRow([...CSV_COLUMNS]),
-    toCsvRow([
-      row.submittedAt,
-      row.customerReference,
-      row.username,
-      row.verificationStatus,
-    ]),
+    toCsvRow([row.submittedAt, row.userId, row.username, row.verificationStatus]),
   ]
   return `${lines.join('\r\n')}\r\n`
 }
 
 /**
  * Builds a file name that is safe on every platform: only letters, digits,
- * dashes and underscores, so nothing can be injected through the customer
- * reference.
+ * dashes and underscores, so nothing can be injected through the user ID.
  */
-export function buildCsvFilename(customerReference: string, submittedAt: string): string {
-  const safeReference = customerReference
+export function buildCsvFilename(userId: string, submittedAt: string): string {
+  const safeUserId = userId
     .replace(/[^A-Za-z0-9_-]+/g, '-')
     .replace(/^-+|-+$/g, '')
   const stamp = submittedAt.replace(/[^0-9]/g, '').slice(0, 14)
-  return `account-details-${safeReference || 'customer'}-${stamp}.csv`
+  return `account-details-${safeUserId || 'customer'}-${stamp}.csv`
 }
 
 /**

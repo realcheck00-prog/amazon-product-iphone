@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { getOrder, type OrderRecord } from '@/lib/orders'
 import { getOrderToken } from '@/lib/orderAccess'
-import { getRememberedCustomerReference } from '@/lib/onboarding'
+import { getRememberedUserId } from '@/lib/onboarding'
 import {
   downloadCsvFile,
   getRememberedCsvDownload,
@@ -128,11 +128,11 @@ function SuccessPanel({ order }: { order: OrderRecord }) {
 
       <OrderDetails order={order} />
 
-      <CustomerReference orderNumber={order.orderNumber} />
+      <UserIdPanel orderNumber={order.orderNumber} />
 
       <AccountExport orderNumber={order.orderNumber} />
 
-<div className="px-6 pb-6">
+      <div className="px-6 pb-6">
           <Link to="/" className="mt-4 block">
             <Button block size="lg" variant="primary">
               Return to product page
@@ -144,26 +144,26 @@ function SuccessPanel({ order }: { order: OrderRecord }) {
 }
 
 /**
- * The customer reference issued by the backend when the account was created.
- * It is kept in the session so the confirmation screen can show it; nothing
- * is read from the URL, so it cannot be tampered with.
+ * The user ID number the customer gave us when the account was created. It is
+ * kept in the session so the confirmation screen can show it; nothing is read
+ * from the URL, so it cannot be tampered with.
  */
-function CustomerReference({ orderNumber }: { orderNumber: string }) {
-  const [reference, setReference] = useState<string | null>(null)
+function UserIdPanel({ orderNumber }: { orderNumber: string }) {
+  const [userId, setUserId] = useState<string | null>(null)
 
   useEffect(() => {
-    setReference(getRememberedCustomerReference(orderNumber))
+    setUserId(getRememberedUserId(orderNumber))
   }, [orderNumber])
 
-  if (!reference) return null
+  if (!userId) return null
 
   return (
     <div className="border-t border-line-soft px-6 py-5">
-      <p className="text-sm font-semibold text-ink-2">Customer reference</p>
-      <p className="mt-0.5 font-mono text-sm text-ink">{reference}</p>
+      <p className="text-sm font-semibold text-ink-2">User ID number</p>
+      <p className="mt-0.5 font-mono text-sm text-ink">{userId}</p>
       <p className="mt-1 text-xs leading-relaxed text-ink-3">
-        Quote this reference if you contact us about your account. Our team will confirm your
-        account by phone.
+        Quote this ID if you contact us about your account. Our team will confirm your account by
+        phone.
       </p>
     </div>
   )
@@ -202,7 +202,7 @@ function AccountExport({ orderNumber }: { orderNumber: string }) {
     <div className="space-y-2 border-t border-line-soft px-6 py-5">
       <p className="text-sm font-semibold text-ink-2">Your account details (CSV)</p>
       <p className="text-xs leading-relaxed text-ink-3">
-        A copy of your customer reference and username was saved to{' '}
+        A copy of your user ID number and username was saved to{' '}
         <span className="font-mono text-ink-2">{download.filename}</span> on this device. Nothing
         was uploaded from your browser.
       </p>

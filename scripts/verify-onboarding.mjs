@@ -195,6 +195,7 @@ let orderNumber = GIVEN_ORDER
 let accessToken = GIVEN_TOKEN
 const idempotencyKey = randomUUID()
 const username = `verifier${randomUUID().slice(0, 8)}`
+const userId = `V${randomUUID().replace(/-/g, '').slice(0, 19).toUpperCase()}`
 
 if (orderNumber && accessToken) {
   note('using the order you supplied', orderNumber)
@@ -245,6 +246,7 @@ const onboardingPayload = {
   orderNumber,
   accessToken,
   username,
+  userId,
   fullName: 'Opencode Verifier',
   email: 'verifier@example.com',
   phone: '+1 555 555 0123',
@@ -258,20 +260,22 @@ const onboardingPayload = {
   country: 'US',
 }
 
-let customerReference = ''
+let customerUserId = ''
 {
   const res = await callFunction('complete-onboarding', onboardingPayload)
   if (res.status !== 200 && res.status !== 201) {
     bad('the onboarding call failed', `HTTP ${res.status} ${res.text.slice(0, 200)}`)
   } else if (res.json?.ok !== true) {
     bad('the onboarding call did not return ok:true', res.text.slice(0, 200))
-  } else if (typeof res.json.customerReference !== 'string' || !res.json.customerReference) {
-    bad('no customer reference was issued', res.text.slice(0, 200))
-  } else if (!/^CUST-[0-9A-F]{10}$/.test(res.json.customerReference)) {
-    bad('the customer reference has an unexpected shape', res.json.customerReference)
+  } else if (typeof res.json.userId !== 'string' || !res.json.userId) {
+    bad('no user ID was returned', res.text.slice(0, 200))
+  } else if (!/^[A-Za-z0-9]{1,20}$/.test(res.json.userId)) {
+    bad('the user ID has an unexpected shape', res.json.userId)
+  } else if (res.json.userId !== userId) {
+    bad('the stored user ID is not the one that was submitted', `${res.json.userId} vs ${userId}`)
   } else {
-    customerReference = res.json.customerReference
-    ok('the customer account was created', `reference ${customerReference}`)
+    customerUserId = res.json.userId
+    ok('the customer account was created', `user ID ${customerUserId}`)
   }
 }
 
@@ -292,15 +296,15 @@ verificationStatus: {
   const res = await callFunction('complete-onboarding', onboardingPayload)
   if (res.status !== 200) {
     bad('the retry failed', `HTTP ${res.status} ${res.text.slice(0, 200)}`)
-  } else if (res.json?.customerReference !== customerReference) {
+  } else if (res.json?.userId !== customerUserId) {
     bad(
-      'the retry issued a different customer reference',
-      `first ${customerReference} vs retry ${res.json?.customerReference}`,
+      'the retry returned a different user ID',
+      `first ${customerUserId} vs retry ${res.json?.userId}`,
     )
   } else if (res.json?.duplicate !== true) {
     bad('the retry was not reported as a duplicate', res.text.slice(0, 200))
   } else {
-    ok('the retry reused the same record and reference', customerReference)
+    ok('the retry reused the same record and user ID', customerUserId)
   }
 }
 

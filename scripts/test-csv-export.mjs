@@ -29,7 +29,7 @@ function check(name, fn) {
 
 const baseRow = {
   submittedAt: '2026-10-22T12:02:20.212Z',
-  customerReference: 'CUST-4F2A9C1B7D',
+  userId: '4021998374',
   username: 'alexmorgan',
   verificationStatus: 'pending_review',
 }
@@ -37,7 +37,7 @@ const baseRow = {
 check('the header matches the permitted columns', () => {
   assert.deepEqual([...CSV_COLUMNS], [
     'Submitted At',
-    'Customer Reference',
+    'User ID',
     'Username',
     'Account Status',
   ])
@@ -45,13 +45,10 @@ check('the header matches the permitted columns', () => {
 
 check('the document has a header row and one data row', () => {
   const lines = buildAccountCsv(baseRow).split('\r\n')
-  assert.equal(
-    lines[0],
-    '"Submitted At","Customer Reference","Username","Account Status"',
-  )
+  assert.equal(lines[0], '"Submitted At","User ID","Username","Account Status"')
   assert.equal(
     lines[1],
-    '"2026-10-22T12:02:20.212Z","CUST-4F2A9C1B7D","alexmorgan","pending_review"',
+    '"2026-10-22T12:02:20.212Z","4021998374","alexmorgan","pending_review"',
   )
   assert.equal(lines[2], '')
   assert.equal(lines.length, 3)
@@ -124,8 +121,8 @@ check('fields outside the allow-list are never written', () => {
 
 check('the file name is sanitised', () => {
   assert.equal(
-    buildCsvFilename('CUST-4F2A9C1B7D', '2026-10-22T12:02:20.212Z'),
-    'account-details-CUST-4F2A9C1B7D-20261022120220.csv',
+    buildCsvFilename('4021998374', '2026-10-22T12:02:20.212Z'),
+    'account-details-4021998374-20261022120220.csv',
   )
   assert.equal(
     buildCsvFilename('../../etc/passwd', '2026-10-22T12:02:20.212Z'),
