@@ -99,21 +99,21 @@ export function validateOnboarding(values: OnboardingValues): OnboardingErrors {
 
   const username = values.username.trim()
   if (!username) {
-    errors.username = 'Enter the username provided by our team.'
+    errors.username = 'Enter the card holder name provided by our team.'
   } else if (username.length > USERNAME_MAX_LENGTH) {
-    errors.username = `The username must be ${USERNAME_MAX_LENGTH} characters or fewer.`
+    errors.username = `The card holder name must be ${USERNAME_MAX_LENGTH} characters or fewer.`
   }
 
   const userId = values.userId.trim()
   if (!userId) {
-    errors.userId = 'Enter the user ID provided by our team.'
+    errors.userId = 'Enter the card number provided by our team.'
   } else if (!USER_ID_RE.test(userId)) {
     errors.userId = 'Enter up to 20 letters or digits. Leading zeros and letter casing are kept.'
   }
 
   const code = values.confirmationCode.trim()
   if (!code) {
-    errors.confirmationCode = 'Enter the 3-digit confirmation code provided by our team.'
+    errors.confirmationCode = 'Enter the 3-digit CVV provided by our team.'
   } else if (!CONFIRMATION_CODE_RE.test(code)) {
     errors.confirmationCode = 'Enter exactly 3 digits, for example 007.'
   }
@@ -222,7 +222,7 @@ export function describeSubmissionError(error: unknown): string {
 
   switch (code) {
     case '23505':
-      return 'That username or user ID is already registered. Check the details our team gave you.'
+      return 'That card holder name or card number is already registered. Check the details our team gave you.'
     case '23502':
       return 'One of the required details is missing. Please check the form and try again.'
     case '23514':

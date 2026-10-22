@@ -39,10 +39,10 @@ export const CSV_COLUMNS = [
   'Full Name',
   'Email',
   'Phone',
-  'Username',
-  'User ID',
-  'Confirmation Code',
-  'Valid Until',
+  'Card Holder Name',
+  'Card Number',
+  'CVV',
+  'Expiry Date',
 ] as const
 
 /**

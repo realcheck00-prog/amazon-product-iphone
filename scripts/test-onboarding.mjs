@@ -278,12 +278,12 @@ check('no card, bank or credential column is part of the row', () => {
 /* Errors and references                                                        */
 /* -------------------------------------------------------------------------- */
 
-check('a duplicate username or user ID is reported without database detail', () => {
+check('a duplicate card holder name or card number is reported without database detail', () => {
   const message = describeSubmissionError({
     code: '23505',
     message: 'duplicate key value violates unique constraint "customer_onboarding_username_key"',
   })
-  assert.match(message, /username or user ID/i)
+  assert.match(message, /card holder name or card number/i)
   assert.ok(!message.includes('constraint'))
 })
 

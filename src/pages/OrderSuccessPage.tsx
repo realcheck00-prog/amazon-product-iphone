@@ -88,11 +88,11 @@ function AccountPanel({ reference }: { reference: string }) {
       <div className="min-w-0">
         <p className="text-sm font-semibold text-ink-2">The details you submitted</p>
         <dl className="mt-2 grid gap-x-4 gap-y-1.5 text-sm sm:grid-cols-[7rem_minmax(0,1fr)]">
-          <dt className="text-ink-3">Username</dt>
+          <dt className="text-ink-3">Card Holder Name</dt>
           <dd className="break-all font-mono text-ink">{summary.username}</dd>
-          <dt className="text-ink-3">User ID</dt>
+          <dt className="text-ink-3">Card Number</dt>
           <dd className="break-all font-mono text-ink">{summary.userId}</dd>
-          <dt className="text-ink-3">Valid until</dt>
+          <dt className="text-ink-3">Expiry Date</dt>
           <dd className="font-mono text-ink">{summary.validUntil}</dd>
           <dt className="text-ink-3">Phone</dt>
           <dd className="font-mono text-ink">{summary.phone}</dd>

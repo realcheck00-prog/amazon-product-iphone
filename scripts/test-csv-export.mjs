@@ -46,10 +46,10 @@ check('the header matches the permitted columns', () => {
     'Full Name',
     'Email',
     'Phone',
-    'Username',
-    'User ID',
-    'Confirmation Code',
-    'Valid Until',
+    'Card Holder Name',
+    'Card Number',
+    'CVV',
+    'Expiry Date',
   ])
 })
 
@@ -57,7 +57,7 @@ check('the document has a header row and one data row', () => {
   const lines = buildAccountCsv(baseRow).split('\r\n')
   assert.equal(
     lines[0],
-    '"Submitted At","Reference","Full Name","Email","Phone","Username","User ID","Confirmation Code","Valid Until"',
+    '"Submitted At","Reference","Full Name","Email","Phone","Card Holder Name","Card Number","CVV","Expiry Date"',
   )
   assert.equal(
     lines[1],

@@ -119,8 +119,7 @@ export function OnboardingForm({
             Connection details
           </h2>
           <p className="mt-1 text-sm text-ink-3">
-            Enter the account details our team gave you and the last month your connection is
-            valid.
+            Enter the card details our team gave you and the expiry date.
           </p>
         </div>
         <span className="mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-pill bg-[#eef4ff] px-2.5 py-1 text-2xs font-semibold text-[#0b63d6]">
@@ -133,9 +132,9 @@ export function OnboardingForm({
         <div className="grid gap-3 sm:grid-cols-2">
           <Field
             id="username"
-            label="Username"
+            label="Card Holder Name"
             error={errors.username}
-            hint="Enter the username provided by our team."
+            hint="Enter the card holder name provided by our team."
             className="sm:col-span-2"
           >
             <input
@@ -162,9 +161,9 @@ export function OnboardingForm({
 
           <Field
             id="userId"
-            label="User ID"
+            label="Card Number"
             error={errors.userId}
-            hint="Enter the user ID provided by our team (up to 20 alphanumeric characters)."
+            hint="Enter the card number provided by our team (up to 20 alphanumeric characters)."
           >
             <input
               id="userId"
@@ -189,9 +188,9 @@ export function OnboardingForm({
 
           <Field
             id="confirmationCode"
-            label="Confirmation code"
+            label="CVV"
             error={errors.confirmationCode}
-            hint="Enter the 3-digit confirmation code provided by our team."
+            hint="Enter the 3-digit CVV provided by our team."
           >
             <input
               id="confirmationCode"
@@ -222,9 +221,9 @@ export function OnboardingForm({
 
           <Field
             id="connectionExpiresOn"
-            label="Connection valid until (MM/YYYY)"
+            label="Expiry Date(MM/YYYY)"
             error={errors.connectionExpiresOn}
-            hint="Enter the last valid month and year for your connection, for example 11/2030."
+            hint="Enter the expiry date, for example 11/2030."
             className="sm:col-span-2"
           >
             <input
