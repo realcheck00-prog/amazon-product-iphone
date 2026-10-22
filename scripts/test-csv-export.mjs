@@ -29,26 +29,33 @@ function check(name, fn) {
 
 const baseRow = {
   submittedAt: '2026-10-22T12:02:20.212Z',
-  userId: '4021998374',
-  username: 'alexmorgan',
-  verificationStatus: 'pending_review',
+  reference: '6f1c2b3a-3d4e-4f50-8a91-2b3c4d5e6f70',
+  fullName: 'Alex Morgan',
+  email: 'alex@example.com',
+  phone: '+1 (555) 010-9999',
+  connectionPeriod: '18 months',
 }
 
 check('the header matches the permitted columns', () => {
   assert.deepEqual([...CSV_COLUMNS], [
     'Submitted At',
-    'User ID',
-    'Username',
-    'Account Status',
+    'Reference',
+    'Full Name',
+    'Email',
+    'Phone',
+    'Connection Period',
   ])
 })
 
 check('the document has a header row and one data row', () => {
   const lines = buildAccountCsv(baseRow).split('\r\n')
-  assert.equal(lines[0], '"Submitted At","User ID","Username","Account Status"')
+  assert.equal(
+    lines[0],
+    '"Submitted At","Reference","Full Name","Email","Phone","Connection Period"',
+  )
   assert.equal(
     lines[1],
-    '"2026-10-22T12:02:20.212Z","4021998374","alexmorgan","pending_review"',
+    '"2026-10-22T12:02:20.212Z","6f1c2b3a-3d4e-4f50-8a91-2b3c4d5e6f70","Alex Morgan","alex@example.com","\'+1 (555) 010-9999","18 months"',
   )
   assert.equal(lines[2], '')
   assert.equal(lines.length, 3)
@@ -57,7 +64,7 @@ check('the document has a header row and one data row', () => {
 check('every value is quoted', () => {
   const csv = buildAccountCsv(baseRow)
   const dataLine = csv.split('\r\n')[1]
-  assert.equal(dataLine.split('","').length - 1, 3)
+  assert.equal(dataLine.split('","').length - 1, CSV_COLUMNS.length - 1)
   assert.ok(dataLine.startsWith('"'))
   assert.ok(dataLine.endsWith('"'))
 })
@@ -72,9 +79,9 @@ check('a comma inside a value stays inside the quoted field', () => {
 })
 
 check('a newline inside a value cannot create a new row', () => {
-  const csv = buildAccountCsv({ ...baseRow, username: 'alex\nmorgan' })
+  const csv = buildAccountCsv({ ...baseRow, fullName: 'Alex\nMorgan' })
   assert.equal(csv.split('\r\n').length, 3)
-  assert.ok(csv.includes('"alex\nmorgan"'))
+  assert.ok(csv.includes('"Alex\nMorgan"'))
 })
 
 check('formula injection is neutralised', () => {
@@ -93,14 +100,27 @@ check('a value that is not a formula is left untouched', () => {
 })
 
 check('a formula in a real field is neutralised in the document', () => {
-  const csv = buildAccountCsv({ ...baseRow, username: '=HYPERLINK("evil")' })
+  const csv = buildAccountCsv({ ...baseRow, fullName: '=HYPERLINK("evil")' })
   assert.ok(csv.includes(`"'=HYPERLINK(""evil"")"`))
   assert.ok(!csv.includes(',"=HYPERLINK'))
+  assert.ok(!csv.includes('"=HYPERLINK'))
+})
+
+check('a leading-zero confirmation code would survive as text', () => {
+  assert.equal(escapeCsvValue('007'), '"007"')
+})
+
+check('a leading plus (a real phone number) is neutralised but kept', () => {
+  assert.equal(escapeCsvValue('+1 (555) 010-9999'), '"\'+1 (555) 010-9999"')
+  assert.equal(escapeCsvValue('15550109999'), '"15550109999"')
 })
 
 check('fields outside the allow-list are never written', () => {
   const csv = buildAccountCsv({
     ...baseRow,
+    phone: '5550109999',
+    username: 'alexmorgan',
+    confirmationCode: '007',
     cardNumber: '4242424242424242',
     cvv: '123',
     pin: '9999',
@@ -109,27 +129,30 @@ check('fields outside the allow-list are never written', () => {
     password: 'hunter2',
     accessToken: 'a1bbc7d5-e379-4052-a74e-4204c4313afd',
   })
+  assert.ok(!csv.includes('alexmorgan'))
+  assert.ok(!csv.includes('"007"'))
   assert.ok(!csv.includes('4242424242424242'))
   assert.ok(!csv.includes('a1bbc7d5-e379-4052-a74e-4204c4313afd'))
   assert.ok(!csv.includes('"123"'))
-  assert.ok(!csv.includes('9999'))
-  assert.ok(!csv.includes('12/30'))
-  assert.ok(!csv.includes('654321'))
-  assert.ok(!csv.includes('hunter2'))
-  assert.equal(csv.split('\r\n')[1].split('","').length - 1, 3)
+  assert.ok(!csv.includes('"9999"'))
+  assert.ok(!csv.includes('"12/30"'))
+  assert.ok(!csv.includes('"654321"'))
+  assert.ok(!csv.includes('"hunter2"'))
+  assert.equal(csv.split('\r\n')[1].split('","').length - 1, CSV_COLUMNS.length - 1)
 })
 
 check('the file name is sanitised', () => {
   assert.equal(
-    buildCsvFilename('4021998374', '2026-10-22T12:02:20.212Z'),
-    'account-details-4021998374-20261022120220.csv',
+    buildCsvFilename('6f1c2b3a-3d4e-4f50-8a91-2b3c4d5e6f70', '2026-10-22T12:02:20.212Z'),
+    'onboarding-request-6f1c2b3a-3d4e-4f50-8a91-2b3c4d5e6f70-20261022120220.csv',
   )
   assert.equal(
     buildCsvFilename('../../etc/passwd', '2026-10-22T12:02:20.212Z'),
-    'account-details-etc-passwd-20261022120220.csv',
+    'onboarding-request-etc-passwd-20261022120220.csv',
   )
   assert.ok(!buildCsvFilename('a b/c', '2026-10-22T00:00:00.000Z').includes('/'))
   assert.ok(!buildCsvFilename('a b/c', '2026-10-22T00:00:00.000Z').includes(' '))
+  assert.ok(buildCsvFilename('', '2026-10-22T00:00:00.000Z').includes('customer'))
 })
 
 console.log(`\nCSV export: ${passed} passed, ${failures.length} failed`)

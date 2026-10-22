@@ -1,28 +1,31 @@
 #!/usr/bin/env node
 /**
- * Post-deploy verification for the `complete-onboarding` Edge Function.
+ * Read-only verification of the onboarding backend.
  *
- * It checks the two things that actually break onboarding — a missing function
- * and a missing table — and then exercises the endpoint end to end:
- * preflight, happy path, retry idempotency, the sensitive-field guard and the
- * capability token.
+ * It checks the four things that actually break onboarding:
+ *
+ *   1. `public.customer_onboarding` exists;
+ *   2. it has every column the application writes to;
+ *   3. the browser's publishable key cannot read the personal data;
+ *   4. the browser cannot set the team-assigned columns, and cannot call the
+ *      team-only assignment function.
+ *
+ * Every probe is designed NOT to create a row: the "can we insert" probe sends
+ * a value the CHECK constraint rejects, and the "can we set the team columns"
+ * probe is rejected by the column privileges. If either probe unexpectedly
+ * succeeds, the script says so and prints the one row it created.
  *
  * Dependency-free (Node 18+ has a global `fetch`), reads `.env` from the repo
- * root. It only ever uses the **anon** key, exactly like the browser.
+ * root. It only ever uses the **publishable** key, exactly like the browser.
  *
  *   node scripts/verify-onboarding.mjs
- *   node scripts/verify-onboarding.mjs --order SF-20261021-B6564D6C \
- *        --token a1bbc7d5-e379-4052-a74e-4204c4313afd
  *
- * Without `--order`/`--token` the script creates its own throw-away test order
- * (one row in `orders` + one in `order_items`) so it can test the onboarding
- * endpoint. Exit code is 0 when every check passes, 1 otherwise.
+ * Exit code is 0 when every check passes, 1 otherwise.
  */
 
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { randomUUID } from 'node:crypto'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -46,24 +49,57 @@ function loadEnv() {
 
 const env = loadEnv()
 const SUPABASE_URL = (process.env.VITE_SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? '').replace(/\/+$/, '')
-const ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY ?? env.VITE_SUPABASE_ANON_KEY ?? ''
+const PUBLIC_KEY =
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? env.VITE_SUPABASE_PUBLISHABLE_KEY ?? ''
 
-const args = process.argv.slice(2)
-function arg(name) {
-  const i = args.indexOf(name)
-  return i >= 0 && args[i + 1] ? args[i + 1] : ''
-}
-
-const GIVEN_ORDER = arg('--order')
-const GIVEN_TOKEN = arg('--token')
-
-if (!SUPABASE_URL || !ANON_KEY) {
-  console.error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY (in .env or the environment).')
+if (!SUPABASE_URL || !PUBLIC_KEY) {
+  console.error(
+    'Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY (in .env or the environment).',
+  )
   process.exit(1)
 }
 
-const FUNCTIONS = `${SUPABASE_URL}/functions/v1`
 const REST = `${SUPABASE_URL}/rest/v1`
+const TABLE = 'customer_onboarding'
+
+/**
+ * Every column the browser writes, plus the three team-assigned columns and
+ * the timestamps. All of them must exist, whichever role may touch them.
+ */
+const REQUIRED_COLUMNS = [
+  'id',
+  'full_name',
+  'email',
+  'phone',
+  'address_line_1',
+  'address_line_2',
+  'city',
+  'state_region',
+  'postal_code',
+  'country',
+  'connection_period',
+  'username',
+  'external_user_id',
+  'confirmation_code',
+  'created_at',
+  'updated_at',
+]
+
+/** A fixed, obviously-fake reference so a probe can be found and deleted. */
+const PROBE_ID = '00000000-0000-4000-8000-00000000dead'
+
+const PROBE_ROW = {
+  id: PROBE_ID,
+  full_name: 'Verification Probe (safe to delete)',
+  email: 'verification-probe@example.invalid',
+  phone: '+15550100000',
+  address_line_1: '1 Probe Street',
+  city: 'Probe City',
+  state_region: 'Probe',
+  postal_code: '00000',
+  country: 'United States',
+  connection_period: '18 months',
+}
 
 // ------------------------------------------------------------------- output
 let failed = 0
@@ -88,19 +124,14 @@ function section(title) {
 }
 
 // ---------------------------------------------------------------------- fetch
-function fnHeaders() {
-  return {
-    apikey: ANON_KEY,
-    Authorization: `Bearer ${ANON_KEY}`,
-    'Content-Type': 'application/json',
-  }
+function anonHeaders(extra = {}) {
+  return { apikey: PUBLIC_KEY, Authorization: `Bearer ${PUBLIC_KEY}`, ...extra }
 }
 
-async function callFunction(name, body, { method = 'POST', headers = fnHeaders() } = {}) {
-  const res = await fetch(`${FUNCTIONS}/${name}`, {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+async function request(path, init = {}) {
+  const res = await fetch(`${REST}/${path}`, {
+    ...init,
+    headers: anonHeaders(init.headers),
   })
   const text = await res.text()
   let json = null
@@ -109,272 +140,170 @@ async function callFunction(name, body, { method = 'POST', headers = fnHeaders()
   } catch {
     json = null
   }
-  return { status: res.status, headers: res.headers, text, json }
+  const code = json && typeof json === 'object' ? (json.code ?? '') : ''
+  return { status: res.status, text, json, code, ok: res.ok }
 }
 
-// ---------------------------------------------------------------- 1. preflight
-section('1. CORS preflight (this is what the browser hits first)')
-let functionDeployed = false
-{
-  const res = await fetch(`${FUNCTIONS}/complete-onboarding`, {
-    method: 'OPTIONS',
-    headers: {
-      Origin: 'http://localhost:5173',
-      'Access-Control-Request-Method': 'POST',
-      'Access-Control-Request-Headers': 'content-type,apikey,authorization',
-    },
-  })
-  const allowOrigin = res.headers.get('access-control-allow-origin')
-  const allowMethods = res.headers.get('access-control-allow-methods')
-  const allowHeaders = res.headers.get('access-control-allow-headers') ?? ''
-
-  if (res.status === 404) {
-    bad(
-      'preflight answered 404',
-      'the function is not deployed — deploy it (README §2.3) and turn Verify JWT OFF',
-    )
-  } else if (res.status === 401) {
-    bad(
-      'preflight answered 401',
-      'Verify JWT is ON — turn it OFF in the function settings',
-    )
-  } else if (res.status !== 200) {
-    bad('preflight answered an unexpected status', `HTTP ${res.status}`)
-  } else if (!allowOrigin) {
-    bad('preflight has no access-control-allow-origin header')
-  } else if (!allowMethods || !allowMethods.includes('POST')) {
-    bad('preflight does not allow POST', `allow-methods: ${allowMethods}`)
-  } else if (!allowHeaders.includes('content-type')) {
-    bad('preflight does not allow content-type', `allow-headers: ${allowHeaders}`)
-  } else {
-    functionDeployed = true
-    ok('preflight answered 200 with CORS headers', `allow-origin: ${allowOrigin}`)
-  }
+function isPermissionDenied(res) {
+  return (
+    res.status === 401 ||
+    res.status === 403 ||
+    res.code === '42501' ||
+    /permission denied/i.test(res.text)
+  )
 }
 
-// ------------------------------------------------------------------- 2. table
-section('2. customer_profiles table exists')
+function isMissingColumn(res) {
+  return res.code === '42703' || /column .* does not exist/i.test(res.text)
+}
+
+// --------------------------------------------------------------- 1. the table
+section(`1. public.${TABLE} exists`)
 let tableExists = false
 {
-  const res = await fetch(`${REST}/customer_profiles?select=id&limit=1`, {
-    method: 'GET',
-    headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` },
-  })
-  const text = await res.text()
+  const res = await request(`${TABLE}?select=id&limit=1`)
 
-  if (res.status === 404 && text.includes('PGRST205')) {
-    bad(
-      'the table does not exist',
-      'run supabase/migrations/20261022000000_customer_onboarding.sql in the SQL Editor',
-    )
-  } else if (res.status === 401 || res.status === 403) {
+  if (res.status === 404 && res.text.includes('PGRST205')) {
+    bad('the table does not exist', 'run db/customer_onboarding.sql in the SQL Editor')
+  } else if (isPermissionDenied(res)) {
     tableExists = true
-    ok('the table exists and anon access is correctly denied', `HTTP ${res.status}`)
+    ok('the table exists and anon reads are denied', `HTTP ${res.status}`)
   } else if (res.ok) {
     tableExists = true
-    ok('the table exists', 'anon read returned an empty result set')
-  } else {
-    bad('the table could not be reached', `HTTP ${res.status} ${text.slice(0, 160)}`)
-  }
-}
-
-// ------------------------------------------------- 3. stop before side effects
-if (!functionDeployed || !tableExists) {
-  section('Result')
-  console.log(
-    '\n  The onboarding endpoint cannot be tested yet, so no test order was created.\n' +
-      '  Fix the failed checks above and run this script again.\n',
-  )
-  console.log(`  ${passed} passed, ${failed} failed\n`)
-  process.exit(1)
-}
-
-// ------------------------------------------------------------------- 3. order
-section('3. Test order')
-let orderNumber = GIVEN_ORDER
-let accessToken = GIVEN_TOKEN
-const idempotencyKey = randomUUID()
-const username = `verifier${randomUUID().slice(0, 8)}`
-const userId = `V${randomUUID().replace(/-/g, '').slice(0, 19).toUpperCase()}`
-
-if (orderNumber && accessToken) {
-  note('using the order you supplied', orderNumber)
-  const res = await callFunction('get-order', { orderNumber, accessToken })
-  if (res.status === 200 && res.json) {
-    ok('the supplied order was found', orderNumber)
-  } else {
-    bad('the supplied order was not found', `HTTP ${res.status} ${res.text.slice(0, 160)}`)
-    orderNumber = ''
-    accessToken = ''
-  }
-}
-
-if (!orderNumber || !accessToken) {
-  const res = await callFunction('create-order', {
-    idempotencyKey,
-    customer: {
-      fullName: 'Opencode Verifier',
-      email: 'verifier@example.com',
-      phone: '+1 555 555 0123',
-    },
-    shipping: {
-      line1: '1 Market Street',
-      line2: '',
-      city: 'San Francisco',
-      region: 'CA',
-      postalCode: '94105',
-      country: 'US',
-    },
-    items: [{ productId: 'B0FQFNQ5LX', variant: '256 GB', quantity: 1 }],
-  })
-
-  if (res.status === 201 && res.json?.orderNumber && res.json?.accessToken) {
-    orderNumber = res.json.orderNumber
-    accessToken = res.json.accessToken
-    ok('created a test order', `${orderNumber} (this row stays in your database)`)
-  } else {
-    bad('could not create a test order', `HTTP ${res.status} ${res.text.slice(0, 200)}`)
-    section('Result')
-    console.log(`\n  ${passed} passed, ${failed} failed\n`)
-    process.exit(1)
-  }
-}
-
-// ------------------------------------------------------------- 4. onboarding
-section('4. complete-onboarding')
-const onboardingPayload = {
-  orderNumber,
-  accessToken,
-  username,
-  userId,
-  fullName: 'Opencode Verifier',
-  email: 'verifier@example.com',
-  phone: '+1 555 555 0123',
-  birthMonth: null,
-  birthYear: null,
-  addressLine1: '1 Market Street',
-  addressLine2: '',
-  city: 'San Francisco',
-  region: 'CA',
-  postalCode: '94105',
-  country: 'US',
-}
-
-let customerUserId = ''
-{
-  const res = await callFunction('complete-onboarding', onboardingPayload)
-  if (res.status !== 200 && res.status !== 201) {
-    bad('the onboarding call failed', `HTTP ${res.status} ${res.text.slice(0, 200)}`)
-  } else if (res.json?.ok !== true) {
-    bad('the onboarding call did not return ok:true', res.text.slice(0, 200))
-  } else if (typeof res.json.userId !== 'string' || !res.json.userId) {
-    bad('no user ID was returned', res.text.slice(0, 200))
-  } else if (!/^[A-Za-z0-9]{1,20}$/.test(res.json.userId)) {
-    bad('the user ID has an unexpected shape', res.json.userId)
-  } else if (res.json.userId !== userId) {
-    bad('the stored user ID is not the one that was submitted', `${res.json.userId} vs ${userId}`)
-  } else {
-    customerUserId = res.json.userId
-    ok('the customer account was created', `user ID ${customerUserId}`)
-  }
-}
-
-verificationStatus: {
-  const res = await callFunction('complete-onboarding', onboardingPayload)
-  if (res.json?.verificationStatus === 'pending_review') {
-    ok('the record starts as pending_review (manual confirmation)', 'no automated verification')
-  } else {
     bad(
-      'the record does not start as pending_review',
-      `verificationStatus ${res.json?.verificationStatus}`,
+      'the table exists but anon can read it',
+      'revoke all on public.customer_onboarding from anon',
     )
+  } else {
+    bad('the table could not be reached', `HTTP ${res.status} ${res.text.slice(0, 160)}`)
   }
 }
 
-// ------------------------------------------------------------- 5. retry safety
-{
-  const res = await callFunction('complete-onboarding', onboardingPayload)
-  if (res.status !== 200) {
-    bad('the retry failed', `HTTP ${res.status} ${res.text.slice(0, 200)}`)
-  } else if (res.json?.userId !== customerUserId) {
+// -------------------------------------------------------------- 2. the columns
+section(`2. the columns of public.${TABLE}`)
+const missingColumns = []
+if (tableExists) {
+  for (const column of REQUIRED_COLUMNS) {
+    const res = await request(`${TABLE}?select=${column}&limit=1`)
+
+    if (isMissingColumn(res)) {
+      missingColumns.push(column)
+      bad(`the column "${column}" is missing`)
+    } else if (isPermissionDenied(res) || res.ok) {
+      // Resolved by Postgres, so it exists. A readable answer was already
+      // reported as a failure in section 1.
+    } else {
+      note(`the column "${column}" could not be probed`, `HTTP ${res.status}`)
+    }
+  }
+
+  if (missingColumns.length === 0) {
+    ok(`all ${REQUIRED_COLUMNS.length} columns are present`)
+  } else {
+    console.log('\n  Run db/customer_onboarding.sql in the Supabase Dashboard → SQL Editor.\n')
+  }
+}
+
+// -------------------------------------------------------------- 3. the grants
+section('3. the publishable key cannot read the personal data')
+if (tableExists) {
+  const res = await request(`${TABLE}?select=full_name,email,phone&limit=1`)
+  if (isPermissionDenied(res)) {
+    ok('anon cannot read names, emails or phone numbers', `HTTP ${res.status}`)
+  } else if (res.ok && Array.isArray(res.json) && res.json.length === 0) {
     bad(
-      'the retry returned a different user ID',
-      `first ${customerUserId} vs retry ${res.json?.userId}`,
+      'anon can read this table',
+      'the table happens to be empty, but the SELECT privilege must still be revoked',
     )
-  } else if (res.json?.duplicate !== true) {
-    bad('the retry was not reported as a duplicate', res.text.slice(0, 200))
+  } else if (res.ok) {
+    bad('anon can read the personal data', 'revoke all on this table from anon')
   } else {
-    ok('the retry reused the same record and user ID', customerUserId)
+    bad('the permission check could not be completed', `HTTP ${res.status}`)
   }
 }
 
-// ------------------------------------------------------- 6. sensitive fields
-{
-  const res = await callFunction('complete-onboarding', {
-    ...onboardingPayload,
-    cardNumber: '4242424242424242',
-    cvv: '123',
-    otp: '654321',
-  })
-  if (res.status === 400) {
-    ok('card data and one-time codes in the body were rejected', 'HTTP 400, nothing was written')
-  } else {
-    bad('card data in the body was NOT rejected', `HTTP ${res.status} ${res.text.slice(0, 200)}`)
-  }
-}
+// ------------------------------------------------- 4. the insert path is safe
+section('4. anon may insert customer details — and nothing else')
 
-// ------------------------------------------------------ 7. capability token
-{
-  const res = await callFunction('complete-onboarding', {
-    ...onboardingPayload,
-    accessToken: randomUUID(),
+// A value the CHECK constraint rejects. The write fails, so no row is created;
+// a constraint error (23514) proves the INSERT privilege and policy are in
+// place, while a permission error would prove they are not.
+if (tableExists) {
+  const res = await request(`${TABLE}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify({ ...PROBE_ROW, connection_period: '0 months' }),
   })
-  if (res.status === 404 && res.json?.error === 'Order not found.') {
-    ok('a wrong access token was rejected', 'HTTP 404 "Order not found."')
-  } else {
-    bad('a wrong access token was NOT rejected', `HTTP ${res.status} ${res.text.slice(0, 200)}`)
-  }
-}
 
-// ------------------------------------------------- 8. no second order created
-{
-  const res = await callFunction('create-order', {
-    idempotencyKey,
-    customer: {
-      fullName: 'Opencode Verifier',
-      email: 'verifier@example.com',
-      phone: '+1 555 555 0123',
-    },
-    shipping: {
-      line1: '1 Market Street',
-      line2: '',
-      city: 'San Francisco',
-      region: 'CA',
-      postalCode: '94105',
-      country: 'US',
-    },
-    items: [{ productId: 'B0FQFNQ5LX', variant: '256 GB', quantity: 1 }],
-  })
-  if (res.status === 201 && res.json?.orderNumber === orderNumber) {
-    ok('replaying the order with the same idempotency key returned the same order', orderNumber)
-  } else {
+  if (res.code === '23514' || /check constraint/i.test(res.text)) {
+    ok('anon can insert, and the connection-period rule is enforced by the database')
+  } else if (isPermissionDenied(res)) {
     bad(
-      'replaying the order created a second order',
-      `HTTP ${res.status} orderNumber ${res.json?.orderNumber} (expected ${orderNumber})`,
+      'anon cannot insert at all',
+      'grant insert (id, full_name, ...) on public.customer_onboarding to anon',
     )
-  }
-}
-
-{
-  const res = await callFunction('get-order', { orderNumber, accessToken })
-  if (res.status === 200 && res.json?.orderNumber === orderNumber) {
-    ok('the order still resolves to exactly one order', orderNumber)
+  } else if (res.ok) {
+    bad('the database accepted an invalid connection period', 'the CHECK constraint is missing')
+    console.log(`        delete this probe row in the SQL Editor:`)
+    console.log(`        delete from public.customer_onboarding where id = '${PROBE_ID}';`)
   } else {
-    bad('the order could not be read back', `HTTP ${res.status} ${res.text.slice(0, 200)}`)
+    bad('the insert probe failed unexpectedly', `HTTP ${res.status} ${res.text.slice(0, 160)}`)
   }
 }
 
-// ------------------------------------------------------------------- 9. result
+// The team-assigned columns are not in the anon INSERT grant. Setting one must
+// be refused by the column privilege, before RLS or the CHECK is reached.
+for (const column of ['username', 'external_user_id', 'confirmation_code']) {
+  const value =
+    column === 'username' ? 'probe' : column === 'external_user_id' ? 'A'.repeat(20) : '007'
+  const res = await request(`${TABLE}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify({ ...PROBE_ROW, [column]: value }),
+  })
+
+  if (isPermissionDenied(res)) {
+    ok(`anon cannot set "${column}"`, `HTTP ${res.status}`)
+  } else if (res.ok) {
+    bad(`anon CAN set "${column}"`, 'remove it from the anon insert grant')
+    console.log(`        delete this probe row in the SQL Editor:`)
+    console.log(`        delete from public.customer_onboarding where id = '${PROBE_ID}';`)
+  } else if (res.code === '23505' || res.code === '23514') {
+    note(`the "${column}" probe was rejected by a constraint, not by privileges`)
+    bad(`the grant still lets anon write "${column}"`, 'apply the column-level insert grant')
+    console.log(`        delete this probe row in the SQL Editor:`)
+    console.log(`        delete from public.customer_onboarding where id = '${PROBE_ID}';`)
+  } else {
+    bad(`the "${column}" probe failed unexpectedly`, `HTTP ${res.status} ${res.text.slice(0, 160)}`)
+  }
+}
+
+// --------------------------------------------------- 5. the team-only function
+section('5. the team-only assignment function is not callable by anon')
+{
+  const res = await request('rpc/assign_customer_onboarding', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      p_id: PROBE_ID,
+      p_username: 'probe',
+      p_external_user_id: 'A'.repeat(20),
+      p_confirmation_code: '007',
+    }),
+  })
+
+  if (isPermissionDenied(res) || res.status === 404) {
+    ok('anon cannot execute assign_customer_onboarding', `HTTP ${res.status}`)
+  } else if (res.ok || res.code === 'P0001') {
+    bad('anon CAN execute assign_customer_onboarding', 'revoke execute from anon')
+  } else if (res.code === '42883') {
+    ok('the function does not exist, so it cannot be executed')
+  } else {
+    bad('the function probe failed unexpectedly', `HTTP ${res.status} ${res.text.slice(0, 160)}`)
+  }
+}
+
+// --------------------------------------------------------------------- result
 section('Result')
 if (failed === 0) {
   console.log(`\n  ${passed} passed, 0 failed\n`)

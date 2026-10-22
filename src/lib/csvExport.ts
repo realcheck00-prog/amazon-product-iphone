@@ -1,14 +1,14 @@
 /**
- * Local CSV export for the demo checkout.
+ * Local CSV export for the onboarding form.
  *
  * The onboarding details are stored in Supabase. This file renders a copy of
  * the summary for the customer's own machine — it is a copy for the customer,
  * not a second store, and it never leaves the device.
  *
  * SECURITY — the export is an allow-list, not a deny-list: only the fields
- * listed in `CSV_COLUMNS` are ever written. Card numbers, CVVs, PINs, expiry
- * credentials, one-time codes, the order capability token and any other
- * secret are not part of the row type, so they cannot reach the file.
+ * listed in `CSV_COLUMNS` are ever written. Card numbers, CVVs, PINs, bank
+ * details and every other secret are not part of the row type, so they cannot
+ * reach the file.
  *
  * SPREADSHEET SAFETY — every value is quoted, embedded quotes are doubled and
  * a value that a spreadsheet would evaluate as a formula (it starts with
@@ -20,20 +20,23 @@
 export type AccountCsvRow = {
   /** ISO-8601 submission timestamp, generated on the client. */
   submittedAt: string
-  /** The customer's own user ID number, e.g. `4021998374`. */
-  userId: string
-  /** The username the customer chose. */
-  username: string
-  /** The confirmation state of the account. */
-  verificationStatus: string
+  /** The reference the customer quotes when they call us. */
+  reference: string
+  fullName: string
+  email: string
+  phone: string
+  /** The connection period, e.g. `18 months`. */
+  connectionPeriod: string
 }
 
 /** Column order and header labels of the exported file. */
 export const CSV_COLUMNS = [
   'Submitted At',
-  'User ID',
-  'Username',
-  'Account Status',
+  'Reference',
+  'Full Name',
+  'Email',
+  'Phone',
+  'Connection Period',
 ] as const
 
 /**
@@ -65,21 +68,28 @@ export function toCsvRow(values: readonly string[]): string {
 export function buildAccountCsv(row: AccountCsvRow): string {
   const lines = [
     toCsvRow([...CSV_COLUMNS]),
-    toCsvRow([row.submittedAt, row.userId, row.username, row.verificationStatus]),
+    toCsvRow([
+      row.submittedAt,
+      row.reference,
+      row.fullName,
+      row.email,
+      row.phone,
+      row.connectionPeriod,
+    ]),
   ]
   return `${lines.join('\r\n')}\r\n`
 }
 
 /**
  * Builds a file name that is safe on every platform: only letters, digits,
- * dashes and underscores, so nothing can be injected through the user ID.
+ * dashes and underscores, so nothing can be injected through the reference.
  */
-export function buildCsvFilename(userId: string, submittedAt: string): string {
-  const safeUserId = userId
+export function buildCsvFilename(reference: string, submittedAt: string): string {
+  const safeReference = reference
     .replace(/[^A-Za-z0-9_-]+/g, '-')
     .replace(/^-+|-+$/g, '')
   const stamp = submittedAt.replace(/[^0-9]/g, '').slice(0, 14)
-  return `account-details-${safeUserId || 'customer'}-${stamp}.csv`
+  return `onboarding-request-${safeReference || 'customer'}-${stamp}.csv`
 }
 
 /**
@@ -123,36 +133,36 @@ export type CsvDownload = {
 const STORAGE_KEY = 'shopfront.accountCsv.v1'
 
 /** Remembers the exported file for this session only. Never leaves the browser. */
-export function rememberCsvDownload(orderNumber: string, download: CsvDownload): void {
+export function rememberCsvDownload(reference: string, download: CsvDownload): void {
   try {
     const raw = window.sessionStorage.getItem(STORAGE_KEY)
     const map: Record<string, CsvDownload> = {}
     if (raw) {
       const parsed: unknown = JSON.parse(raw)
       if (parsed && typeof parsed === 'object') {
-        for (const [order, value] of Object.entries(parsed as Record<string, unknown>)) {
+        for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
           const entry = value as Partial<CsvDownload> | null
           if (entry && typeof entry.filename === 'string' && typeof entry.csv === 'string') {
-            map[order] = { filename: entry.filename, csv: entry.csv }
+            map[key] = { filename: entry.filename, csv: entry.csv }
           }
         }
       }
     }
-    map[orderNumber] = download
+    map[reference] = download
     window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(map))
   } catch {
     // no-op — the download itself already happened
   }
 }
 
-/** Returns the file exported for this order in this session, if any. */
-export function getRememberedCsvDownload(orderNumber: string): CsvDownload | null {
+/** Returns the file exported for this reference in this session, if any. */
+export function getRememberedCsvDownload(reference: string): CsvDownload | null {
   try {
     const raw = window.sessionStorage.getItem(STORAGE_KEY)
     if (!raw) return null
     const parsed: unknown = JSON.parse(raw)
     if (!parsed || typeof parsed !== 'object') return null
-    const entry = (parsed as Record<string, unknown>)[orderNumber] as Partial<CsvDownload> | null
+    const entry = (parsed as Record<string, unknown>)[reference] as Partial<CsvDownload> | null
     if (!entry || typeof entry.filename !== 'string' || typeof entry.csv !== 'string') return null
     return { filename: entry.filename, csv: entry.csv }
   } catch {

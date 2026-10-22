@@ -9,16 +9,12 @@
  */
 import assert from 'node:assert/strict'
 import {
-  BIRTH_MONTHS,
-  MAX_USER_ID_LENGTH,
-  MIN_BIRTH_YEAR,
-  USERNAME_RE,
-  USER_ID_RE,
-  buildOnboardingPayload,
-  birthYearOptions,
+  CONNECTION_PERIOD_RE,
+  buildOnboardingRecord,
+  describeSubmissionError,
   emptyOnboarding,
-  normalizeUserId,
-  normalizeUsername,
+  newOnboardingReference,
+  normalizeConnectionPeriod,
   validateOnboarding,
 } from '../src/lib/onboarding.ts'
 
@@ -34,260 +30,210 @@ function check(name, fn) {
   }
 }
 
-const NOW = new Date('2026-10-22T00:00:00.000Z')
-
-/** A complete, valid onboarding: a username and a user ID number. */
-const valid = {
-  ...emptyOnboarding,
-  username: 'alexmorgan',
-  userId: '4021998374',
-}
+/** A complete, valid onboarding submission. */
+const valid = { connectionPeriod: '18 months' }
 
 /* -------------------------------------------------------------------------- */
-/* Username                                                                    */
+/* Connection period                                                           */
 /* -------------------------------------------------------------------------- */
 
-check('a username is lowercased and stripped of non-alphanumerics', () => {
-  assert.equal(normalizeUsername('Alex.Morgan'), 'alexmorgan')
-  assert.equal(normalizeUsername('alex morgan'), 'alexmorgan')
-  assert.equal(normalizeUsername('alex-morgan_99'), 'alexmorgan99')
-  assert.equal(normalizeUsername('a<b>c'), 'abc')
+check('a connection period in months is normalised', () => {
+  assert.equal(normalizeConnectionPeriod('18 months'), '18 months')
+  assert.equal(normalizeConnectionPeriod('18 MONTHS'), '18 months')
+  assert.equal(normalizeConnectionPeriod('  18   months  '), '18 months')
+  assert.equal(normalizeConnectionPeriod('18month'), '18 months')
 })
 
-check('a username is capped at 32 characters', () => {
-  assert.equal(normalizeUsername('x'.repeat(40)).length, 32)
+check('a connection period in years is normalised', () => {
+  assert.equal(normalizeConnectionPeriod('2 years'), '2 years')
+  assert.equal(normalizeConnectionPeriod('2 YEARS'), '2 years')
+  assert.equal(normalizeConnectionPeriod('2year'), '2 years')
 })
 
-check('a valid username passes', () => {
-  const errors = validateOnboarding(valid, NOW)
-  assert.deepEqual(errors, {})
+check('a single unit is singular', () => {
+  assert.equal(normalizeConnectionPeriod('1 months'), '1 month')
+  assert.equal(normalizeConnectionPeriod('1 years'), '1 year')
+  assert.equal(normalizeConnectionPeriod('1 month'), '1 month')
+  assert.equal(normalizeConnectionPeriod('1 year'), '1 year')
 })
 
-check('a username shorter than 3 characters is rejected', () => {
-  const errors = validateOnboarding({ ...valid, username: 'ab' }, NOW)
-  assert.ok(errors.username)
-  assert.ok(errors.username.includes('3'))
+check('a value without a unit or without a number is left for validation', () => {
+  assert.equal(normalizeConnectionPeriod(''), '')
+  assert.equal(normalizeConnectionPeriod('12'), '12')
+  assert.equal(normalizeConnectionPeriod('months'), 'months')
+  assert.equal(normalizeConnectionPeriod('many months'), 'many months')
 })
 
-check('an empty username is rejected', () => {
-  const errors = validateOnboarding({ ...valid, username: '' }, NOW)
-  assert.ok(errors.username)
-})
-
-check('a username longer than 32 characters is truncated, not accepted as-is', () => {
-  const tooLong = 'x'.repeat(33)
-  assert.equal(normalizeUsername(tooLong).length, 32)
-  const errors = validateOnboarding({ ...valid, username: tooLong }, NOW)
-  assert.deepEqual(errors, {})
-})
-
-check('the accepted username shape is lowercase alphanumeric', () => {
-  assert.ok(USERNAME_RE.test('alexmorgan'))
-  assert.ok(USERNAME_RE.test('alex99'))
-  assert.ok(!USERNAME_RE.test('alex morgan'))
-  assert.ok(!USERNAME_RE.test('ALEXMORGAN'))
+check('the accepted shape requires a positive whole number and a unit', () => {
+  assert.ok(CONNECTION_PERIOD_RE.test('18 months'))
+  assert.ok(CONNECTION_PERIOD_RE.test('1 month'))
+  assert.ok(CONNECTION_PERIOD_RE.test('2 years'))
+  assert.ok(CONNECTION_PERIOD_RE.test('1 year'))
+  assert.ok(!CONNECTION_PERIOD_RE.test('0 months'))
+  assert.ok(!CONNECTION_PERIOD_RE.test('18'))
+  assert.ok(!CONNECTION_PERIOD_RE.test('18 days'))
+  assert.ok(!CONNECTION_PERIOD_RE.test('18months'))
+  assert.ok(!CONNECTION_PERIOD_RE.test('18.5 months'))
+  assert.ok(!CONNECTION_PERIOD_RE.test('-18 months'))
 })
 
 /* -------------------------------------------------------------------------- */
-/* User ID number — the customer's own id                                     */
+/* Validation                                                                  */
 /* -------------------------------------------------------------------------- */
 
-check('a user ID is uppercased and stripped of non-alphanumerics', () => {
-  assert.equal(normalizeUserId('4021998374'), '4021998374')
-  assert.equal(normalizeUserId('us-4021 998374'), 'US4021998374')
-  assert.equal(normalizeUserId('a<b>c'), 'ABC')
+check('a valid submission has no errors', () => {
+  assert.deepEqual(validateOnboarding(valid), {})
 })
 
-check('a user ID is capped at 20 characters', () => {
-  assert.equal(normalizeUserId('9'.repeat(40)).length, MAX_USER_ID_LENGTH)
-  assert.equal(MAX_USER_ID_LENGTH, 20)
+check('the connection period is required', () => {
+  assert.ok(validateOnboarding({ ...emptyOnboarding }).connectionPeriod)
+  assert.ok(validateOnboarding({ connectionPeriod: '   ' }).connectionPeriod)
 })
 
-check('a valid user ID passes', () => {
-  const errors = validateOnboarding(valid, NOW)
-  assert.deepEqual(errors, {})
+check('a number without a unit is rejected', () => {
+  assert.ok(validateOnboarding({ connectionPeriod: '12' }).connectionPeriod)
 })
 
-check('the documented user ID lengths are all accepted', () => {
-  for (const id of ['4021998374', '402199837412345', '4021998374123456', '40219983741234567890']) {
-    assert.equal(id.length, id === '4021998374' ? 10 : id.length)
-    const errors = validateOnboarding({ ...valid, userId: id }, NOW)
-    assert.deepEqual(errors, {}, `expected ${id.length} characters to be accepted`)
-  }
+check('an unknown unit is rejected', () => {
+  assert.ok(validateOnboarding({ connectionPeriod: '12 days' }).connectionPeriod)
 })
 
-check('an empty user ID is rejected', () => {
-  const errors = validateOnboarding({ ...valid, userId: '' }, NOW)
-  assert.ok(errors.userId)
+check('zero is rejected', () => {
+  assert.ok(validateOnboarding({ connectionPeriod: '0 months' }).connectionPeriod)
 })
 
-check('a user ID longer than 20 characters is truncated, not accepted as-is', () => {
-  const tooLong = '9'.repeat(21)
-  assert.equal(normalizeUserId(tooLong).length, 20)
-  const errors = validateOnboarding({ ...valid, userId: tooLong }, NOW)
-  assert.deepEqual(errors, {})
-})
-
-check('the accepted user ID shape is alphanumeric, up to 20 characters', () => {
-  assert.ok(USER_ID_RE.test('4021998374'))
-  assert.ok(USER_ID_RE.test('US4021998374'))
-  assert.ok(USER_ID_RE.test('A'))
-  assert.ok(USER_ID_RE.test('9'.repeat(20)))
-  assert.ok(!USER_ID_RE.test(''))
-  assert.ok(!USER_ID_RE.test('9'.repeat(21)))
-  assert.ok(!USER_ID_RE.test('4021 998374'))
-  assert.ok(!USER_ID_RE.test('4021-998374'))
-  assert.ok(!USER_ID_RE.test('4021.998374'))
+check('a normalised but valid value passes', () => {
+  assert.deepEqual(validateOnboarding({ connectionPeriod: '  2   YEARS ' }), {})
 })
 
 /* -------------------------------------------------------------------------- */
-/* Date of birth — optional                                                    */
-/* -------------------------------------------------------------------------- */
-
-check('the date of birth may be left empty', () => {
-  const errors = validateOnboarding(valid, NOW)
-  assert.deepEqual(errors, {})
-})
-
-check('a month and a year are accepted', () => {
-  const errors = validateOnboarding({ ...valid, birthMonth: '4', birthYear: '1990' }, NOW)
-  assert.deepEqual(errors, {})
-})
-
-check('a month without a year is rejected', () => {
-  const errors = validateOnboarding({ ...valid, birthMonth: '4' }, NOW)
-  assert.ok(errors.birthYear)
-})
-
-check('a year without a month is rejected', () => {
-  const errors = validateOnboarding({ ...valid, birthYear: '1990' }, NOW)
-  assert.ok(errors.birthMonth)
-})
-
-check('an impossible month is rejected', () => {
-  const errors = validateOnboarding({ ...valid, birthMonth: '13', birthYear: '1990' }, NOW)
-  assert.ok(errors.birthMonth)
-})
-
-check('a future year is rejected', () => {
-  const errors = validateOnboarding({ ...valid, birthMonth: '1', birthYear: '2999' }, NOW)
-  assert.ok(errors.birthYear)
-})
-
-check('a year before the earliest allowed year is rejected', () => {
-  const errors = validateOnboarding(
-    {
-      ...valid,
-      birthMonth: '1',
-      birthYear: String(MIN_BIRTH_YEAR - 1),
-    },
-    NOW,
-  )
-  assert.ok(errors.birthYear)
-})
-
-check('the year list starts at the current year and stops at the floor', () => {
-  const years = birthYearOptions(NOW)
-  assert.equal(years[0], 2026)
-  assert.equal(years[years.length - 1], MIN_BIRTH_YEAR)
-})
-
-check('all twelve months are offered', () => {
-  assert.equal(BIRTH_MONTHS.length, 12)
-  assert.equal(BIRTH_MONTHS[0].label, 'January')
-  assert.equal(BIRTH_MONTHS[11].value, '12')
-})
-
-/* -------------------------------------------------------------------------- */
-/* The request payload                                                         */
+/* The database row                                                             */
 /* -------------------------------------------------------------------------- */
 
 const input = {
-  orderNumber: 'SF-20261022-9CC80474',
-  accessToken: 'a1bbc7d5-e379-4052-a74e-4204c4313afd',
-  username: 'Alex.Morgan',
-  userId: ' 4021998374 ',
+  id: '6f1c2b3a-3d4e-4f50-8a91-2b3c4d5e6f70',
   fullName: '  Alex Morgan  ',
   email: '  Alex@Example.COM ',
   phone: '  +1 (555) 010-9999 ',
-  birthMonth: 4,
-  birthYear: 1990,
   addressLine1: ' 1 Market Street ',
   addressLine2: ' Apt 4 ',
   city: ' San Francisco ',
-  region: ' CA ',
+  stateRegion: ' CA ',
   postalCode: ' 94105 ',
   country: ' United States ',
+  connectionPeriod: ' 18 MONTHS ',
 }
 
-const payload = buildOnboardingPayload(input)
+const record = buildOnboardingRecord(input)
 
-check('the payload contains exactly the permitted fields', () => {
-  assert.deepEqual(Object.keys(payload).sort(), [
-    'accessToken',
-    'addressLine1',
-    'addressLine2',
-    'birthMonth',
-    'birthYear',
+check('the row contains exactly the columns the browser may write', () => {
+  assert.deepEqual(Object.keys(record).sort(), [
+    'address_line_1',
+    'address_line_2',
     'city',
+    'connection_period',
     'country',
     'email',
-    'fullName',
-    'orderNumber',
+    'full_name',
+    'id',
     'phone',
-    'postalCode',
-    'region',
-    'userId',
-    'username',
+    'postal_code',
+    'state_region',
   ])
 })
 
-check('the values are trimmed and normalised', () => {
-  assert.equal(payload.username, 'alexmorgan')
-  assert.equal(payload.userId, '4021998374')
-  assert.equal(payload.fullName, 'Alex Morgan')
-  assert.equal(payload.email, 'alex@example.com')
-  assert.equal(payload.phone, '+1 (555) 010-9999')
-  assert.equal(payload.addressLine1, '1 Market Street')
-  assert.equal(payload.city, 'San Francisco')
-  assert.equal(payload.postalCode, '94105')
+check('the values are trimmed and the email is lower-cased', () => {
+  assert.equal(record.id, input.id)
+  assert.equal(record.full_name, 'Alex Morgan')
+  assert.equal(record.email, 'alex@example.com')
+  assert.equal(record.phone, '+1 (555) 010-9999')
+  assert.equal(record.address_line_1, '1 Market Street')
+  assert.equal(record.address_line_2, 'Apt 4')
+  assert.equal(record.city, 'San Francisco')
+  assert.equal(record.state_region, 'CA')
+  assert.equal(record.postal_code, '94105')
+  assert.equal(record.country, 'United States')
+  assert.equal(record.connection_period, '18 months')
 })
 
-check('no card or credential field is part of the payload', () => {
-  const bannedKeys = [
+check('phone numbers and postal codes are never rewritten', () => {
+  const kept = buildOnboardingRecord({
+    ...input,
+    phone: '+44 20 7946 0958',
+    postalCode: 'SW1A 1AA',
+  })
+  assert.equal(kept.phone, '+44 20 7946 0958')
+  assert.equal(kept.postal_code, 'SW1A 1AA')
+})
+
+check('an empty address line 2 is stored as null', () => {
+  assert.equal(buildOnboardingRecord({ ...input, addressLine2: '   ' }).address_line_2, null)
+})
+
+check('the team-assigned fields are never sent by the browser', () => {
+  // They are omitted, not set to null: PostgREST names every payload key as a
+  // target column, and anon has no INSERT privilege on these three columns.
+  assert.ok(!('username' in record))
+  assert.ok(!('external_user_id' in record))
+  assert.ok(!('confirmation_code' in record))
+})
+
+check('no card, bank or credential column is part of the row', () => {
+  const banned = [
     'cardNumber',
     'card_number',
     'cvv',
     'cvc',
     'pin',
     'expiry',
-    'expiryMonth',
-    'expiryYear',
+    'cardholder',
+    'billing_zip',
+    'bank_account',
+    'iban',
     'password',
     'otp',
-    'verificationCode',
-    'code',
-    'secret',
   ]
-  for (const key of Object.keys(payload)) {
-    assert.ok(!bannedKeys.includes(key), `payload has a sensitive key: ${key}`)
+  for (const key of Object.keys(record)) {
+    assert.ok(!banned.includes(key), `the row has a sensitive column: ${key}`)
   }
 })
 
-check('the customer-supplied user ID is the only identifier in the payload', () => {
-  assert.ok('userId' in payload)
-  assert.ok(!('customerReference' in payload))
-  assert.ok(!('customer_reference' in payload))
+/* -------------------------------------------------------------------------- */
+/* Errors and references                                                        */
+/* -------------------------------------------------------------------------- */
+
+check('a duplicate submission is reported without database detail', () => {
+  const message = describeSubmissionError({ code: '23505', message: 'duplicate key value violates unique constraint "customer_onboarding_pkey"' })
+  assert.equal(message, 'This request was already submitted, so we kept the first copy.')
+  assert.ok(!message.includes('constraint'))
 })
 
-check('an absent date of birth is sent as null', () => {
-  const empty = buildOnboardingPayload({
-    ...input,
-    birthMonth: null,
-    birthYear: null,
+check('a rejected value is reported without database detail', () => {
+  const message = describeSubmissionError({
+    code: '23514',
+    message: 'new row for relation "customer_onboarding" violates check constraint',
   })
-  assert.equal(empty.birthMonth, null)
-  assert.equal(empty.birthYear, null)
+  assert.ok(!message.includes('constraint'))
+  assert.ok(!message.includes('customer_onboarding'))
+})
+
+check('an unknown failure gets a generic message', () => {
+  assert.equal(
+    describeSubmissionError(new Error('Failed to fetch')),
+    'We could not save your details. Please check your connection and try again.',
+  )
+  assert.equal(
+    describeSubmissionError(null),
+    'We could not save your details. Please check your connection and try again.',
+  )
+})
+
+check('a reference is generated and is unique', () => {
+  const first = newOnboardingReference()
+  const second = newOnboardingReference()
+  assert.equal(typeof first, 'string')
+  assert.ok(first.length >= 8)
+  assert.notEqual(first, second)
 })
 
 console.log(`\nOnboarding: ${passed} passed, ${failures.length} failed`)

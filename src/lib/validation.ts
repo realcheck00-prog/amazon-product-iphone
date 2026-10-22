@@ -1,4 +1,25 @@
-import type { CheckoutCustomer, CheckoutShipping } from './orders'
+/**
+ * Validation for the customer details the storefront collects.
+ *
+ * The rules are mirrored by database constraints, so a row that somehow
+ * bypasses this file is still rejected by Postgres. Client-side validation
+ * exists for fast, accessible feedback — it is not a security control.
+ */
+
+export type CheckoutCustomer = {
+  fullName: string
+  email: string
+  phone: string
+}
+
+export type CheckoutShipping = {
+  line1: string
+  line2: string
+  city: string
+  region: string
+  postalCode: string
+  country: string
+}
 
 export type CheckoutFormValues = CheckoutCustomer & CheckoutShipping
 
@@ -19,57 +40,83 @@ export const emptyCheckoutForm: CheckoutFormValues = {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 const PHONE_RE = /^\+?[0-9](?:[0-9\s().-]{5,18}[0-9])$/
-const COUNTRY_RE = /^[A-Za-z][A-Za-z\s.'-]{1,63}$/
-const POSTAL_RE = /^[A-Za-z0-9][A-Za-z0-9\s-]{1,11}$/
+const COUNTRY_RE = /^[A-Za-z][A-Za-z\s.'-]{1,79}$/
+const POSTAL_RE = /^[A-Za-z0-9][A-Za-z0-9\s-]{0,19}$/
 
 /**
- * Client-side validation. The Edge Function validates again server-side —
- * this only exists to give immediate, accessible feedback.
+ * Client-side validation of the customer details.
+ *
+ * Phone numbers and postal codes are only checked for shape, never rewritten:
+ * a legitimate `+1 (555) 010-9999` or `SW1A 1AA` must survive untouched.
  */
 export function validateCheckout(values: CheckoutFormValues): CheckoutErrors {
   const errors: CheckoutErrors = {}
 
-  if (values.fullName.trim().length < 2) {
+  const fullName = values.fullName.trim()
+  if (fullName.length < 2) {
     errors.fullName = 'Enter your full name.'
+  } else if (fullName.length > 120) {
+    errors.fullName = 'Your name is too long.'
   }
 
-  if (!values.email.trim()) {
+  const email = values.email.trim()
+  if (!email) {
     errors.email = 'Enter your email address.'
-  } else if (!EMAIL_RE.test(values.email.trim())) {
+  } else if (email.length > 254) {
+    errors.email = 'That email address is too long.'
+  } else if (!EMAIL_RE.test(email)) {
     errors.email = 'Enter a valid email address.'
   }
 
-  if (!values.phone.trim()) {
+  const phone = values.phone.trim()
+  if (!phone) {
     errors.phone = 'Enter your phone number.'
-  } else if (!PHONE_RE.test(values.phone.trim())) {
+  } else if (phone.length > 32) {
+    errors.phone = 'That phone number is too long.'
+  } else if (!PHONE_RE.test(phone)) {
     errors.phone = 'Enter a valid phone number.'
   }
 
-  if (!values.line1.trim()) {
+  const line1 = values.line1.trim()
+  if (line1.length < 2) {
     errors.line1 = 'Enter your street address.'
+  } else if (line1.length > 200) {
+    errors.line1 = 'Your street address is too long.'
   }
 
-  if (values.line2.trim().length > 120) {
+  if (values.line2.trim().length > 200) {
     errors.line2 = 'Address line 2 is too long.'
   }
 
-  if (!values.city.trim()) {
+  const city = values.city.trim()
+  if (!city) {
     errors.city = 'Enter your city.'
+  } else if (city.length > 120) {
+    errors.city = 'Your city name is too long.'
   }
 
-  if (!values.region.trim()) {
+  const region = values.region.trim()
+  if (!region) {
     errors.region = 'Enter your state or region.'
+  } else if (region.length > 120) {
+    errors.region = 'Your state or region is too long.'
   }
 
-  if (!values.postalCode.trim()) {
+  const postalCode = values.postalCode.trim()
+  if (!postalCode) {
     errors.postalCode = 'Enter your postal or ZIP code.'
-  } else if (!POSTAL_RE.test(values.postalCode.trim())) {
+  } else if (postalCode.length > 20) {
+    errors.postalCode = 'That postal code is too long.'
+  } else if (!POSTAL_RE.test(postalCode)) {
     errors.postalCode = 'Enter a valid postal or ZIP code.'
   }
 
-  if (!values.country.trim()) {
+  const country = values.country.trim()
+  if (!country) {
     errors.country = 'Enter your country.'
-  } else if (!COUNTRY_RE.test(values.country.trim())) {
+  } else if (country.length > 80) {
+    errors.country = 'Your country name is too long.'
+  } else if (!COUNTRY_RE.test(country)) {
     errors.country = 'Enter a valid country name.'
   }
 

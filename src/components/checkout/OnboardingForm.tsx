@@ -9,10 +9,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import {
-  BIRTH_MONTHS,
-  birthYearOptions,
-  normalizeUserId,
-  normalizeUsername,
+  normalizeConnectionPeriod,
   type OnboardingErrors,
   type OnboardingField,
   type OnboardingValues,
@@ -86,7 +83,7 @@ function Field({ id, label, error, optional, hint, className, children }: FieldP
 }
 
 /**
- * Customer onboarding section of the checkout.
+ * Connection details section of the checkout.
  *
  * SECURITY: there is no card-number, expiry, CVV or PIN input here, so those
  * credentials can neither be entered nor transmitted. There is no password
@@ -94,9 +91,9 @@ function Field({ id, label, error, optional, hint, className, children }: FieldP
  * team over the phone, so nothing credential-shaped is ever collected, sent
  * or stored.
  *
- * The user ID is the customer's OWN id number. It is an identifier and a
- * label, not a credential: it never authenticates anyone and it never grants
- * access to anything.
+ * The username, the 20-character user ID and the 3-digit confirmation code are
+ * assigned by our team afterwards. The customer is never asked for them and
+ * the browser is never allowed to write them.
  */
 export function OnboardingForm({
   values,
@@ -108,8 +105,6 @@ export function OnboardingForm({
   download = null,
   onDownload,
 }: OnboardingFormProps) {
-  const years = birthYearOptions()
-
   return (
     <section
       aria-labelledby="onboarding-heading"
@@ -121,10 +116,11 @@ export function OnboardingForm({
             id="onboarding-heading"
             className="text-base font-semibold tracking-[-0.01em] text-ink md:text-lg"
           >
-            Customer Account
+            Connection details
           </h2>
           <p className="mt-1 text-sm text-ink-3">
-            Create your account. We confirm it with you by phone before it is activated.
+            Tell us how long you need the connection for. We call you to confirm your account and
+            give you your user ID.
           </p>
         </div>
         <span className="mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-pill bg-[#eef4ff] px-2.5 py-1 text-2xs font-semibold text-[#0b63d6]">
@@ -135,112 +131,37 @@ export function OnboardingForm({
 
       <div className="space-y-4 px-4 py-4 sm:px-5 sm:py-5">
         <Field
-          id="username"
-          label="UserName"
-          error={errors.username}
-          hint="Letters and numbers only, 3–32 characters. Choose one you will recognise."
+          id="connectionPeriod"
+          label="Connection period"
+          error={errors.connectionPeriod}
+          hint="How long you need the connection for, in months or years — for example 18 months or 2 years."
         >
           <input
-            id="username"
-            name="username"
-            type="text"
-            inputMode="text"
-            autoComplete="username"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            placeholder="alexmorgan"
-            maxLength={32}
-            required
-            disabled={disabled}
-            value={values.username}
-            aria-invalid={errors.username ? true : undefined}
-            aria-describedby={errors.username ? 'username-error' : undefined}
-            onChange={(event) => onChange('username', normalizeUsername(event.target.value))}
-            onBlur={() => onBlur('username')}
-            className={cn(inputClass, errors.username ? fieldErrorClass : fieldNormalClass)}
-          />
-        </Field>
-
-        <Field
-          id="userId"
-          label="UserID"
-          error={errors.userId}
-          hint="Letters and numbers only, up to 20 characters."
-        >
-          <input
-            id="userId"
-            name="userId"
+            id="connectionPeriod"
+            name="connectionPeriod"
             type="text"
             inputMode="text"
             autoComplete="off"
-            autoCapitalize="characters"
+            autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
-            placeholder="4021998374"
+            placeholder="18 months"
             maxLength={20}
             required
             disabled={disabled}
-            value={values.userId}
-            aria-invalid={errors.userId ? true : undefined}
-            aria-describedby={errors.userId ? 'userId-error' : undefined}
-            onChange={(event) => onChange('userId', normalizeUserId(event.target.value))}
-            onBlur={() => onBlur('userId')}
-            className={cn(inputClass, errors.userId ? fieldErrorClass : fieldNormalClass)}
+            value={values.connectionPeriod}
+            aria-invalid={errors.connectionPeriod ? true : undefined}
+            aria-describedby={errors.connectionPeriod ? 'connectionPeriod-error' : undefined}
+            onChange={(event) =>
+              onChange('connectionPeriod', normalizeConnectionPeriod(event.target.value))
+            }
+            onBlur={() => onBlur('connectionPeriod')}
+            className={cn(
+              inputClass,
+              errors.connectionPeriod ? fieldErrorClass : fieldNormalClass,
+            )}
           />
         </Field>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field
-            id="birthMonth"
-            label="Max Time"
-            optional
-            error={errors.birthMonth}
-            hint="Only needed where an age requirement applies."
-          >
-            <select
-              id="birthMonth"
-              name="birthMonth"
-              autoComplete="bday-month"
-              disabled={disabled}
-              value={values.birthMonth}
-              aria-invalid={errors.birthMonth ? true : undefined}
-              aria-describedby={errors.birthMonth ? 'birthMonth-error' : undefined}
-              onChange={(event) => onChange('birthMonth', event.target.value)}
-              onBlur={() => onBlur('birthMonth')}
-              className={cn(inputClass, errors.birthMonth ? fieldErrorClass : fieldNormalClass)}
-            >
-              <option value="">Not provided</option>
-              {BIRTH_MONTHS.map((month) => (
-                <option key={month.value} value={month.value}>
-                  {month.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field id="birthYear" label="Code" optional error={errors.birthYear}>
-            <select
-              id="birthYear"
-              name="birthYear"
-              autoComplete="bday-year"
-              disabled={disabled}
-              value={values.birthYear}
-              aria-invalid={errors.birthYear ? true : undefined}
-              aria-describedby={errors.birthYear ? 'birthYear-error' : undefined}
-              onChange={(event) => onChange('birthYear', event.target.value)}
-              onBlur={() => onBlur('birthYear')}
-              className={cn(inputClass, errors.birthYear ? fieldErrorClass : fieldNormalClass)}
-            >
-              <option value="">Not provided</option>
-              {years.map((year) => (
-                <option key={year} value={String(year)}>
-                  {year}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
 
         {notice ? (
           <p
@@ -271,12 +192,15 @@ export function OnboardingForm({
             leadingIcon={<Download className="size-3.5" aria-hidden />}
             onClick={onDownload}
           >
-            Download account details (CSV)
+            Download your details (CSV)
           </Button>
         ) : null}
 
         <div className="space-y-2 border-t border-[#ececef] pt-3">
-          <p className="text-2xs text-ink-4">All amounts are shown in US Dollars (USD).</p>
+          <p className="text-2xs leading-relaxed text-ink-4">
+            We use these details only to set up your connection. No payment is taken on this
+            site, and your username and user ID are assigned during the confirmation call.
+          </p>
         </div>
       </div>
     </section>

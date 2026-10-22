@@ -2,8 +2,6 @@ import { useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react
 import { Link, useNavigate } from 'react-router-dom'
 import { AlertTriangle, BadgeCheck, Loader2, Lock, ShoppingBag } from 'lucide-react'
 import { isSupabaseConfigured, supabase, supabaseConfigProblem } from '@/lib/supabase'
-import { createOrder, confirmDemoPayment, type OrderRecord } from '@/lib/orders'
-import { rememberOrderToken } from '@/lib/orderAccess'
 import {
   emptyCheckoutForm,
   hasErrors,
@@ -13,16 +11,16 @@ import {
   type CheckoutFormValues,
 } from '@/lib/validation'
 import {
+  buildOnboardingRecord,
+  describeSubmissionError,
   emptyOnboarding,
-  normalizeUserId,
-  normalizeUsername,
-  rememberUserId,
+  newOnboardingReference,
+  rememberSubmittedContact,
   validateOnboarding,
   type OnboardingErrors,
   type OnboardingField,
   type OnboardingValues,
 } from '@/lib/onboarding'
-import { formatCents } from '@/lib/format'
 import {
   buildAccountCsv,
   buildCsvFilename,
@@ -38,11 +36,6 @@ import { CheckoutHeader } from '@/components/checkout/CheckoutHeader'
 import { FormField } from '@/components/checkout/FormField'
 import { OnboardingForm, type OnboardingNotice } from '@/components/checkout/OnboardingForm'
 import { OrderSummary, type SummaryItem } from '@/components/checkout/OrderSummary'
-
-function newIdempotencyKey(): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`
-}
 
 export function CheckoutPage() {
   const { items: cartItems, clear, openCart } = useCart()
@@ -65,8 +58,9 @@ export function CheckoutPage() {
   const [serverError, setServerError] = useState<string | null>(null)
   const [onboardingNotice, setOnboardingNotice] = useState<OnboardingNotice | null>(null)
   const [csvDownload, setCsvDownload] = useState<CsvDownload | null>(null)
-  const [order, setOrder] = useState<OrderRecord | null>(null)
-  const idempotencyRef = useRef<string>(newIdempotencyKey())
+  // A ref, not just state: two clicks inside the same tick must not insert
+  // the same details twice.
+  const submittingRef = useRef(false)
 
   const summaryItems: SummaryItem[] = useMemo(
     () =>
@@ -144,8 +138,11 @@ export function CheckoutPage() {
 
   async function handleContinue(event: FormEvent) {
     event.preventDefault()
-    if (submitting) return
+    if (submittingRef.current) return
+    submittingRef.current = true
+
     setServerError(null)
+    setOnboardingNotice(null)
 
     const nextErrors = validateCheckout(values)
     const nextOnboardingErrors = validateOnboarding(onboarding)
@@ -154,124 +151,80 @@ export function CheckoutPage() {
     if (hasErrors(nextErrors) || Object.keys(nextOnboardingErrors).length > 0) {
       const firstInvalid = [...Object.keys(nextErrors), ...Object.keys(nextOnboardingErrors)][0]
       document.getElementById(firstInvalid)?.focus()
+      submittingRef.current = false
       return
     }
 
-    setOnboardingNotice(null)
     setSubmitting(true)
     try {
-      // Retry-safe: if an order already exists for this checkout attempt,
-      // reuse it instead of creating a second one. (The server-side
-      // idempotency key would return the same order anyway — this just makes
-      // it explicit and skips an extra round trip.)
-      const created =
-        order ??
-        (await createOrder({
-          idempotencyKey: idempotencyRef.current,
-          customer: {
-            fullName: values.fullName.trim(),
-            email: values.email.trim(),
-            phone: values.phone.trim(),
-          },
-          shipping: {
-            line1: values.line1.trim(),
-            line2: values.line2.trim(),
-            city: values.city.trim(),
-            region: values.region.trim(),
-            postalCode: values.postalCode.trim(),
-            country: values.country.trim(),
-          },
-          items: checkoutItems.map((item) => ({
-            productId: item.productId,
-            variant: item.variant,
-            quantity: item.quantity,
-          })),
-        }))
-      rememberOrderToken(created.orderNumber, created.accessToken)
-      setOrder(created)
-
-      // Create the customer account via direct DB upsert (auth required)
-      setOnboardingNotice({ tone: 'info', message: 'Creating your customer account…' })
-      let customerUserId: string
-      try {
-        if (!supabase) {
-          throw new Error('Supabase client not configured')
-        }
-        const { data: userData, error: userError } = await supabase.auth.getUser()
-        if (userError || !userData?.user?.id) {
-          throw new Error('You must be signed in to complete onboarding.')
-        }
-        const authUserId = userData.user.id
-        const normalizedUserId = normalizeUserId(onboarding.userId)
-        const normalizedUsername = normalizeUsername(onboarding.username)
-
-        const { error: upsertError } = await supabase.from('customer_profiles').upsert(
-          {
-            id: authUserId,
-            user_id: normalizedUserId,
-            username: normalizedUsername,
-            full_name: values.fullName.trim(),
-            email: values.email.trim().toLowerCase(),
-            phone: values.phone.trim(),
-            birth_month: onboarding.birthMonth ? Number(onboarding.birthMonth) : null,
-            birth_year: onboarding.birthYear ? Number(onboarding.birthYear) : null,
-            address_line1: values.line1.trim(),
-            address_line2: values.line2.trim(),
-            city: values.city.trim(),
-            region: values.region.trim(),
-            postal_code: values.postalCode.trim(),
-            country: values.country.trim(),
-            onboarding_completed: true,
-          },
-          { onConflict: 'id' },
-        )
-        if (upsertError) {
-          throw upsertError
-        }
-        customerUserId = normalizedUserId
-        rememberUserId(created.orderNumber, customerUserId)
-      } catch (error) {
-        setOnboardingNotice({
-          tone: 'error',
-          message:
-            error instanceof Error
-              ? error.message
-              : 'Your customer account could not be created. Please try again.',
-        })
-        return
+      if (!supabase) {
+        throw new Error('Supabase client not configured')
       }
+
+      // The reference is generated in the browser, so the customer has a
+      // reference to quote and a double submission collides on the primary key
+      // instead of creating a second row.
+      const reference = newOnboardingReference()
+      const record = buildOnboardingRecord({
+        id: reference,
+        fullName: values.fullName,
+        email: values.email,
+        phone: values.phone,
+        addressLine1: values.line1,
+        addressLine2: values.line2,
+        city: values.city,
+        stateRegion: values.region,
+        postalCode: values.postalCode,
+        country: values.country,
+        connectionPeriod: onboarding.connectionPeriod,
+      })
+
+      setOnboardingNotice({ tone: 'info', message: 'Sending your details…' })
+
+      // One insert, straight into `public.customer_onboarding`. The write is
+      // authorised by the table's row-level security; the browser only holds
+      // the publishable key and never a service-role key.
+      //
+      // `Prefer: return=minimal` keeps Postgres from running `RETURNING`,
+      // which would need a SELECT privilege the public role must not have.
+      const { error: insertError } = await supabase
+        .from('customer_onboarding')
+        .insert(record)
+        .setHeader('Prefer', 'return=minimal')
+
+      if (insertError) {
+        throw insertError
+      }
+
+      rememberSubmittedContact(reference, record.phone)
 
       // A local copy for the customer's own device. It is generated in the
       // browser and never uploaded.
       const submittedAt = new Date().toISOString()
-      let csv: string
-      let filename: string
+      let csv = ''
+      let filename = 'onboarding-request.csv'
       try {
-        filename = buildCsvFilename(customerUserId, submittedAt)
+        filename = buildCsvFilename(reference, submittedAt)
         csv = buildAccountCsv({
           submittedAt,
-          userId: customerUserId,
-          username: normalizeUsername(onboarding.username),
-          verificationStatus: 'pending_review',
+          reference,
+          fullName: record.full_name,
+          email: record.email,
+          phone: record.phone,
+          connectionPeriod: record.connection_period,
         })
-      } catch (error) {
-        setOnboardingNotice({
-          tone: 'error',
-          message: `Your account details could not be exported: ${
-            error instanceof Error ? error.message : 'unknown error'
-          }. The order was not confirmed — press Pay again to retry.`,
-        })
-        return
+      } catch {
+        // The record is saved; only the local copy failed.
       }
 
       // Keep the file for this session so it can be downloaded again from the
       // confirmation screen (this page navigates away right after the export).
       setCsvDownload({ filename, csv })
-      rememberCsvDownload(created.orderNumber, { filename, csv })
+      rememberCsvDownload(reference, { filename, csv })
 
       let downloadStarted = false
       try {
-        downloadStarted = downloadCsvFile(filename, csv)
+        downloadStarted = csv ? downloadCsvFile(filename, csv) : false
       } catch {
         downloadStarted = false
       }
@@ -279,42 +232,24 @@ export function CheckoutPage() {
       setOnboardingNotice({
         tone: 'success',
         message: [
-          `Your customer account ${customerUserId} was created. Our team will confirm it with you by phone.`,
+          `Your details were saved. Our team will call you on ${record.phone} to confirm your account.`,
           downloadStarted
             ? `A copy was downloaded to this device (${filename}).`
-            : 'Your browser blocked the file download — press “Download account details (CSV)” below to save a copy.',
+            : 'Your browser blocked the file download — press “Download your details (CSV)” below to save a copy.',
         ].join(' '),
       })
 
-      // No payment provider is configured: the demo payment is confirmed
-      // immediately on submit. Nothing payment-related is transmitted — a real
-      // integration would send the customer to the provider.
-      const confirmed = await confirmDemoPayment(
-        created.orderNumber,
-        created.accessToken,
-        'succeeded',
-      )
-      setOrder(confirmed)
-
-      if (confirmed.paymentStatus === 'paid' && confirmed.orderStatus === 'confirmed') {
-        // Drop the collected details from memory now that they are no longer
-        // needed.
-        setOnboarding(emptyOnboarding)
-        if (source === 'cart') clear()
-        clearBuyNowItems()
-        navigate(`/order-success?order=${encodeURIComponent(confirmed.orderNumber)}`, {
-          replace: true,
-        })
-      } else {
-        setServerError(
-          'Payment was not completed. Your order is still pending and you can safely try again.',
-        )
-      }
+      // Drop the collected details from memory now that they are no longer
+      // needed.
+      setOnboarding(emptyOnboarding)
+      if (source === 'cart') clear()
+      clearBuyNowItems()
+      navigate(`/order-success?ref=${encodeURIComponent(reference)}`, { replace: true })
     } catch (error) {
-      setServerError(
-        error instanceof Error ? error.message : 'We could not place your order. Please try again.',
-      )
+      setServerError(describeSubmissionError(error))
+      setOnboardingNotice(null)
     } finally {
+      submittingRef.current = false
       setSubmitting(false)
     }
   }
@@ -350,12 +285,12 @@ export function CheckoutPage() {
         >
           <AlertTriangle className="mt-0.5 size-5 shrink-0" aria-hidden />
           <div>
-            <p className="font-semibold">Checkout backend is not configured</p>
+            <p className="font-semibold">Onboarding backend is not configured</p>
             <p className="mt-0.5 leading-relaxed">
               {supabaseConfigProblem} Set <code className="font-mono">VITE_SUPABASE_URL</code> and{' '}
-              <code className="font-mono">VITE_SUPABASE_ANON_KEY</code> in a <code className="font-mono">.env</code>{' '}
-              file and deploy the <code className="font-mono">create-order</code> Edge Function. Until then, placing
-              an order will fail rather than report a false success.
+              <code className="font-mono">VITE_SUPABASE_PUBLISHABLE_KEY</code> in a{' '}
+              <code className="font-mono">.env</code> file. Until then, submissions fail instead of
+              reporting a false success.
             </p>
           </div>
         </div>
@@ -486,9 +421,9 @@ export function CheckoutPage() {
 
             <div className="panel flex flex-col items-stretch gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-ink-3">
-                Demo store — nothing is charged.
+                No payment is taken here.
                 <br />
-                Total due now: <span className="tnum font-semibold text-ink">{formatCents(totalCents)}</span>
+                Our team confirms every account by phone.
               </p>
               <Button
                 type="submit"
@@ -502,7 +437,7 @@ export function CheckoutPage() {
                 ) : (
                   <Lock className="size-4" aria-hidden />
                 )}
-                {submitting ? 'Processing payment…' : `Pay ${formatCents(totalCents)}`}
+                {submitting ? 'Sending your details…' : 'Submit request'}
               </Button>
             </div>
           </form>
@@ -511,14 +446,14 @@ export function CheckoutPage() {
         <div className="lg:sticky lg:top-6">
           <OrderSummary
             items={summaryItems}
-            subtotalCents={order ? order.subtotalCents : subtotalCents}
-            shippingCents={order ? order.shippingCents : shippingCents}
-            totalCents={order ? order.totalCents : totalCents}
-            currency={order ? order.currency : 'USD'}
+            subtotalCents={subtotalCents}
+            shippingCents={shippingCents}
+            totalCents={totalCents}
+            currency="USD"
           />
           <p className="mt-3 flex items-center justify-center gap-1.5 text-2xs text-ink-4">
             <BadgeCheck className="size-3.5" aria-hidden />
-            Order total is recalculated and verified on the server.
+            Demo store — you are not charged online.
           </p>
         </div>
       </div>
