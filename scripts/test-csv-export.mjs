@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict'
 import {
   CSV_COLUMNS,
-  buildBillingCsv,
+  buildAccountCsv,
   buildCsvFilename,
   escapeCsvValue,
   toCsvRow,
@@ -28,34 +28,37 @@ function check(name, fn) {
 }
 
 const baseRow = {
-  submittedAt: '2026-10-21T12:02:20.212Z',
-  orderNumber: 'SF-20261021-9CC80474',
-  cardholderName: 'Alex Morgan',
-  billingPostalCode: '10001',
+  submittedAt: '2026-10-22T12:02:20.212Z',
+  customerReference: 'CUST-4F2A9C1B7D',
+  username: 'alexmorgan',
+  verificationStatus: 'pending_review',
 }
 
 check('the header matches the permitted columns', () => {
   assert.deepEqual([...CSV_COLUMNS], [
     'Submitted At',
-    'Order Reference',
-    'Cardholder Name',
-    'Billing ZIP Code',
+    'Customer Reference',
+    'Username',
+    'Account Status',
   ])
 })
 
 check('the document has a header row and one data row', () => {
-  const lines = buildBillingCsv(baseRow).split('\r\n')
-  assert.equal(lines[0], '"Submitted At","Order Reference","Cardholder Name","Billing ZIP Code"')
+  const lines = buildAccountCsv(baseRow).split('\r\n')
+  assert.equal(
+    lines[0],
+    '"Submitted At","Customer Reference","Username","Account Status"',
+  )
   assert.equal(
     lines[1],
-    '"2026-10-21T12:02:20.212Z","SF-20261021-9CC80474","Alex Morgan","10001"',
+    '"2026-10-22T12:02:20.212Z","CUST-4F2A9C1B7D","alexmorgan","pending_review"',
   )
   assert.equal(lines[2], '')
   assert.equal(lines.length, 3)
 })
 
 check('every value is quoted', () => {
-  const csv = buildBillingCsv(baseRow)
+  const csv = buildAccountCsv(baseRow)
   const dataLine = csv.split('\r\n')[1]
   assert.equal(dataLine.split('","').length - 1, 3)
   assert.ok(dataLine.startsWith('"'))
@@ -72,9 +75,9 @@ check('a comma inside a value stays inside the quoted field', () => {
 })
 
 check('a newline inside a value cannot create a new row', () => {
-  const csv = buildBillingCsv({ ...baseRow, cardholderName: 'Alex\nMorgan' })
+  const csv = buildAccountCsv({ ...baseRow, username: 'alex\nmorgan' })
   assert.equal(csv.split('\r\n').length, 3)
-  assert.ok(csv.includes('"Alex\nMorgan"'))
+  assert.ok(csv.includes('"alex\nmorgan"'))
 })
 
 check('formula injection is neutralised', () => {
@@ -93,18 +96,20 @@ check('a value that is not a formula is left untouched', () => {
 })
 
 check('a formula in a real field is neutralised in the document', () => {
-  const csv = buildBillingCsv({ ...baseRow, cardholderName: '=HYPERLINK("evil")' })
+  const csv = buildAccountCsv({ ...baseRow, username: '=HYPERLINK("evil")' })
   assert.ok(csv.includes(`"'=HYPERLINK(""evil"")"`))
   assert.ok(!csv.includes(',"=HYPERLINK'))
 })
 
 check('fields outside the allow-list are never written', () => {
-  const csv = buildBillingCsv({
+  const csv = buildAccountCsv({
     ...baseRow,
     cardNumber: '4242424242424242',
     cvv: '123',
     pin: '9999',
     expiry: '12/30',
+    otp: '654321',
+    password: 'hunter2',
     accessToken: 'a1bbc7d5-e379-4052-a74e-4204c4313afd',
   })
   assert.ok(!csv.includes('4242424242424242'))
@@ -112,20 +117,22 @@ check('fields outside the allow-list are never written', () => {
   assert.ok(!csv.includes('"123"'))
   assert.ok(!csv.includes('9999'))
   assert.ok(!csv.includes('12/30'))
+  assert.ok(!csv.includes('654321'))
+  assert.ok(!csv.includes('hunter2'))
   assert.equal(csv.split('\r\n')[1].split('","').length - 1, 3)
 })
 
 check('the file name is sanitised', () => {
   assert.equal(
-    buildCsvFilename('SF-20261021-9CC80474', '2026-10-21T12:02:20.212Z'),
-    'billing-details-SF-20261021-9CC80474-20261021120220.csv',
+    buildCsvFilename('CUST-4F2A9C1B7D', '2026-10-22T12:02:20.212Z'),
+    'account-details-CUST-4F2A9C1B7D-20261022120220.csv',
   )
   assert.equal(
-    buildCsvFilename('../../etc/passwd', '2026-10-21T12:02:20.212Z'),
-    'billing-details-etc-passwd-20261021120220.csv',
+    buildCsvFilename('../../etc/passwd', '2026-10-22T12:02:20.212Z'),
+    'account-details-etc-passwd-20261022120220.csv',
   )
-  assert.ok(!buildCsvFilename('a b/c', '2026-10-21T00:00:00.000Z').includes('/'))
-  assert.ok(!buildCsvFilename('a b/c', '2026-10-21T00:00:00.000Z').includes(' '))
+  assert.ok(!buildCsvFilename('a b/c', '2026-10-22T00:00:00.000Z').includes('/'))
+  assert.ok(!buildCsvFilename('a b/c', '2026-10-22T00:00:00.000Z').includes(' '))
 })
 
 console.log(`\nCSV export: ${passed} passed, ${failures.length} failed`)

@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react
 import { Link, useNavigate } from 'react-router-dom'
 import { AlertTriangle, BadgeCheck, Loader2, Lock, ShoppingBag } from 'lucide-react'
 import { isSupabaseConfigured, supabaseConfigProblem } from '@/lib/supabase'
-import { createOrder, confirmDemoPayment, type OrderRecord } from '@/lib/orders'
+import { createOrder, completeOnboarding, confirmDemoPayment, type OrderRecord } from '@/lib/orders'
 import { rememberOrderToken } from '@/lib/orderAccess'
 import {
   emptyCheckoutForm,
@@ -13,7 +13,6 @@ import {
   type CheckoutFormValues,
 } from '@/lib/validation'
 import {
-  completeOnboarding,
   emptyOnboarding,
   normalizeUsername,
   rememberCustomerReference,

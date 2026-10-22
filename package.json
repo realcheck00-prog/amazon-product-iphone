@@ -9,11 +9,10 @@
     "lint": "eslint .",
     "typecheck": "tsc -b --noEmit",
     "preview": "vite preview",
-    "test": "node scripts/test-csv-export.mjs && node scripts/test-sheet-submission.mjs && node scripts/test-apps-script.mjs",
+    "test": "node scripts/test-csv-export.mjs && node scripts/test-onboarding.mjs",
     "test:csv": "node scripts/test-csv-export.mjs",
-    "test:sheets": "node scripts/test-sheet-submission.mjs",
-    "test:gas": "node scripts/test-apps-script.mjs",
-    "verify:billing": "node scripts/verify-save-billing-details.mjs"
+    "test:onboarding": "node scripts/test-onboarding.mjs",
+    "verify:onboarding": "node scripts/verify-onboarding.mjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",

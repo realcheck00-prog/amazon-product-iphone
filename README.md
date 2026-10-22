@@ -1,23 +1,22 @@
 # amazon — iPhone Pro Max demo storefront
 
 A React + Vite + TypeScript + Tailwind CSS demo storefront with a complete,
-responsive guest checkout flow. Orders are created with Supabase (Postgres +
-Edge Functions); the submitted form details are recorded in a Google Sheet
-through a Google Apps Script web app.
+responsive guest checkout flow and a customer onboarding step. Orders and
+customer accounts are stored in **Supabase** (Postgres + Edge Functions).
 
 - **Product:** Apple iPhone 17 Pro Max 256 GB (Cosmic Orange)
 - **Price:** **$100.00 USD** (stored everywhere as `10000` integer cents)
 - **Payment:** **DEMO only** — simulated, clearly labelled, no real charge
-- **Checkout:** `/checkout` (guest, no account required)
+- **Checkout:** `/checkout` (guest, no card details, no payment credentials)
+- **Onboarding:** a customer account is created on the checkout page
 - **Confirmation:** `/order-success` (server-verified)
-- **Form submissions:** Google Sheet via Apps Script (see §8)
 
 > This is an unaffiliated demo interface. It does not use, embed, or redirect to
 > Amazon checkout. The reference URL was used for visual inspiration only.
 
 ---
 
-## 1. What was added
+## 1. What is in the repository
 
 ### Frontend
 
@@ -25,21 +24,22 @@ through a Google Apps Script web app.
 | --- | --- |
 | `src/lib/supabase.ts` | Reusable Supabase browser client + config check |
 | `src/lib/orders.ts` | Typed calls to the Edge Functions |
+| `src/lib/onboarding.ts` | Onboarding rules, payload builder, session store for the issued reference |
+| `src/lib/functionError.ts` | Structured error for a rejected Edge Function call |
 | `src/lib/orderAccess.ts` | Per-order capability-token store (sessionStorage) |
 | `src/lib/buyNow.ts` | Separate Buy Now checkout payload (sessionStorage) |
 | `src/lib/catalog.ts` | Client mirror of the product (never authoritative for price) |
-| `src/lib/validation.ts` | Checkout form validation + inline errors |
-| `src/lib/format.ts` | Added `formatCents()` for integer-cent money |
+| `src/lib/validation.ts` | Contact + shipping form validation + inline errors |
+| `src/lib/format.ts` | `formatCents()` for integer-cent money |
+| `src/data/product.ts` | Product copy, price and storefront identity |
 | `src/data/media.ts` | Single source of truth for uploaded image priority order |
 | `src/state/cart.ts`, `src/state/CartProvider.tsx` | localStorage-backed cart |
 | `src/pages/ProductPage.tsx` | Existing PDP, moved out of `App.tsx` |
-| `src/pages/CheckoutPage.tsx` | Checkout with two-column responsive layout |
+| `src/pages/CheckoutPage.tsx` | Checkout + onboarding with two-column responsive layout |
 | `src/pages/OrderSuccessPage.tsx` | Success / pending screen |
 | `src/components/cart/CartDrawer.tsx` | Slide-over cart with qty + remove |
-| `src/components/checkout/*` | Header, form field, order summary, billing-details form |
-| `src/lib/billingDetails.ts` | Billing-metadata formatting/validation — cardholder name + US ZIP only (client-only) |
-| `src/lib/googleSheets.ts` | Posts one submission to the Apps Script web app (no credentials in the browser) |
-| `src/lib/csvExport.ts` | Local CSV copy of a submission — RFC 4180 escaping + formula-injection guard |
+| `src/components/checkout/*` | Header, form field, order summary, onboarding form |
+| `src/lib/csvExport.ts` | Local CSV copy of the account summary — RFC 4180 escaping + formula-injection guard |
 | `src/App.tsx` | Router (`/`, `/checkout`, `/order-success`) |
 
 ### Backend (Supabase)
@@ -47,18 +47,17 @@ through a Google Apps Script web app.
 | File | Purpose |
 | --- | --- |
 | `supabase/migrations/20260101000000_init_checkout.sql` | Tables, indexes, constraints, RLS, atomic order-creation RPC |
-| `supabase/migrations/20261021000000_payment_billing_details.sql` | Non-sensitive billing metadata table (name + ZIP + timestamp), RLS |
+| `supabase/migrations/20261021000000_payment_billing_details.sql` | **Deprecated** — the old card-form table, kept so its rows are not destroyed (§2.6) |
+| `supabase/migrations/20261022000000_customer_onboarding.sql` | `customer_profiles` (onboarding records, backend-issued customer reference, RLS) |
 | `supabase/functions/create-order/index.ts` | Trusted order creation (server-side pricing + idempotency) |
 | `supabase/functions/get-order/index.ts` | Capability-token order lookup |
 | `supabase/functions/confirm-demo-payment/index.ts` | DEMO payment confirmation (only writer of `paid`/`confirmed`) |
-| `supabase/functions/save-billing-details/index.ts` | Saves cardholder name + billing ZIP (never card number/CVV) |
+| `supabase/functions/complete-onboarding/index.ts` | Creates the customer account; issues the customer reference; rejects card/credential fields |
 | `supabase/functions/_shared/*` | CORS, authoritative catalog, serialization |
 | `supabase/config.toml` | Disables JWT verification for the guest-facing functions |
-| `scripts/verify-save-billing-details.mjs` | Post-deploy check of the function, the table and the billing endpoint (no dependencies) |
+| `scripts/verify-onboarding.mjs` | Post-deploy check of the function, the table and the onboarding endpoint (no dependencies) |
 | `scripts/test-csv-export.mjs` | Tests for the CSV escaping and the formula-injection guard |
-| `scripts/test-sheet-submission.mjs` | Tests for the Apps Script request/response contract (offline) |
-| `google-apps-script/save-checkout-submission.gs` | Apps Script web app that appends one row per submission to a Google Sheet |
-| `google-apps-script/appsscript.json` | Apps Script manifest (`spreadsheets` scope only) |
+| `scripts/test-onboarding.mjs` | Tests for the onboarding rules and the request payload |
 | `vercel.json` | SPA rewrites so `/checkout` and `/order-success` deep-link correctly |
 | `.env.example` | Environment variable placeholders (no secrets) |
 
@@ -77,13 +76,19 @@ Open **SQL Editor → New query**, paste the contents of each file in
 `supabase/migrations/` (in filename order), and run it:
 
 1. `20260101000000_init_checkout.sql`
-2. `20261021000000_payment_billing_details.sql`
+2. `20261021000000_payment_billing_details.sql` — deprecated, only needed if
+   the old table is not in your database yet
+3. `20261022000000_customer_onboarding.sql` ← **the onboarding table**
 
 This creates:
 
 - `public.orders` and `public.order_items` with integer-cent money columns,
   status/amount constraints and indexes on order number, creation date and the
   order-item foreign key.
+- `public.customer_profiles` — one onboarding record per order, with a
+  **database-generated** `customer_reference`, a unique `username`, the
+  optional birth month/year, and the `verification_status` /
+  `verified_at` / `verification_reference` columns.
 - Row Level Security **enabled with no policies**, so anonymous users have **no**
   direct access. Reads/writes happen only through Edge Functions using the
   service-role key.
@@ -105,7 +110,7 @@ supabase link --project-ref <your-project-ref>
 supabase functions deploy create-order
 supabase functions deploy get-order
 supabase functions deploy confirm-demo-payment
-supabase functions deploy save-billing-details
+supabase functions deploy complete-onboarding
 ```
 
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected automatically into
@@ -113,22 +118,15 @@ deployed functions — you do not set them yourself. **Never** put the
 service-role key in frontend code or in `.env` files used by Vite.
 
 DEMO mode is the default. Do **not** set `PAYMENT_PROVIDER` unless you have
-integrated a real provider (see §5).
+integrated a real provider (see §6).
 
 #### Option B — Supabase Dashboard (no CLI required)
 
-Use this when you cannot run `supabase login`. Only `save-billing-details`
-is documented here, because it is the function the Dashboard editor can host
-without any shared-file imports.
-
 1. Open the project → **Edge Functions** → **Deploy a new function**.
 2. Choose **Via Editor**.
-3. Set the function name to `save-billing-details` exactly.
+3. Set the function name to `complete-onboarding` exactly.
 4. Delete the template contents and paste the whole of
-   `supabase/functions/save-billing-details/index.ts`.
-   That file is **self-contained** — it inlines its own CORS headers and
-   helpers instead of importing `../_shared/*`, because the Dashboard editor
-   cannot resolve relative imports of sibling files.
+   `supabase/functions/complete-onboarding/index.ts`.
 5. Click **Deploy function**. Deployment usually takes 10–30 seconds.
 6. Open the function's **detail tab** and turn **Verify JWT** **OFF**.
    The frontend calls this endpoint as an anonymous guest, and the function
@@ -144,10 +142,9 @@ without any shared-file imports.
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected by the platform
 for Dashboard-deployed functions too — you do not add them as secrets.
 
-> If you later deploy the other three functions from the Dashboard, they
-> import `../_shared/cors.ts` and `../_shared/order.ts`. The Dashboard editor
-> can host those files too (add them under the function folder), but the CLI
-> path above is simpler for them.
+> `complete-onboarding` imports `../_shared/cors.ts` and `../_shared/order.ts`.
+> The Dashboard editor can host those files too (add them under the function
+> folder), but the CLI path above is simpler.
 
 ### 2.4 Frontend environment variables
 
@@ -163,27 +160,31 @@ VITE_SUPABASE_ANON_KEY=your-publishable-or-anon-key
 VITE_PAYMENT_MODE=demo
 ```
 
-### 2.5 Troubleshooting: form submissions missing in Supabase
+Only the Supabase **anon/publishable** key may exist in the frontend. The
+service-role key lives exclusively in the Edge Function environment.
 
-The checkout writes billing metadata through two pieces of infrastructure.
-If **either** is missing, nothing appears in the table:
+> `VITE_GOOGLE_SHEETS_ENDPOINT` is **no longer read** — the Google Sheets
+> integration has been removed (§9). Delete it from your local `.env` and from
+> the Vercel environment variables; it is simply ignored, but leaving it
+> around suggests a storage path that no longer exists.
+
+### 2.5 Troubleshooting: onboarding missing in Supabase
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| UI says *"Your billing details were NOT saved: Could not reach the Supabase Edge Function … save-billing-details"* (DevTools shows a CORS / `TypeError: Failed to fetch`) | `save-billing-details` is not deployed. The gateway answers the `OPTIONS` preflight with **404**, and a failed preflight makes the browser report a CORS error and hide the real reason. | deploy `save-billing-details` — see §2.3 Option A (CLI) or Option B (Dashboard) |
-| UI says *"Your billing details were NOT saved: Requested function was not found"* (seen outside the browser, e.g. curl) | same as above | same as above |
-| UI says *"…relation \"public.payment_billing_details\" does not exist"* (or PGRST205) | the second migration was never run | run `supabase/migrations/20261021000000_payment_billing_details.sql` in the SQL Editor |
+| UI says *"Could not reach the Supabase Edge Function … complete-onboarding"* (DevTools shows a CORS / `TypeError: Failed to fetch`) | `complete-onboarding` is not deployed. The gateway answers the `OPTIONS` preflight with **404**, and a failed preflight makes the browser report a CORS error and hide the real reason. | deploy `complete-onboarding` — see §2.3 Option A (CLI) or Option B (Dashboard) |
+| UI says *"…relation \"public.customer_profiles\" does not exist"* (or PGRST205) | the third migration was never run | run `supabase/migrations/20261022000000_customer_onboarding.sql` in the SQL Editor |
 | UI says *"…Missing authorization header"* (401) on a *preflight* | **Verify JWT** was left **ON** for the function | turn the **Verify JWT** toggle off in the Dashboard function settings (or deploy with `--no-verify-jwt`) |
+| UI says *"That username is already taken."* | another customer already chose that username | pick a different one — usernames are unique |
 
-Both infrastructure pieces are required. The table has RLS enabled with no
-policies and its anon grants revoked, so it will always look "empty" when
-queried directly with the anon key — rows are only written by the Edge Function
-(service role) and can only be seen in the Table Editor or with the
-service-role key.
+The table has RLS enabled with no policies and its anon grants revoked, so it
+will always look "empty" when queried directly with the anon key — rows are
+only written by the Edge Function (service role) and can only be seen in the
+Table Editor or with the service-role key.
 
 > **Diagnostic shortcut:** the browser hides the real error, so test the
 > preflight yourself. `curl -i -X OPTIONS \
->   https://<project-ref>.supabase.co/functions/v1/save-billing-details \
+>   https://<project-ref>.supabase.co/functions/v1/complete-onboarding \
 >   -H "Origin: http://localhost:5173" \
 >   -H "Access-Control-Request-Method: POST" \
 >   -H "Access-Control-Request-Headers: content-type,apikey,authorization"`
@@ -192,38 +193,65 @@ service-role key.
 > includes `content-type` and an `access-control-allow-methods` header. A
 > missing function answers **404** with `sb-error-code: NOT_FOUND`.
 
-### 2.6 Verify the deployment
+### 2.6 Optional cleanup of the old billing-details table
+
+`public.payment_billing_details` came from the **removed** card form. Nothing
+writes to it any more and the `save-billing-details` Edge Function has been
+deleted from this repository — but the **table and its rows are still there**,
+because dropping a table destroys data.
+
+The table is marked deprecated by the new migration. When you no longer need
+the rows, remove it:
+
+```sql
+-- 1. Look at what would be lost (do this first).
+select count(*) from public.payment_billing_details;
+select * from public.payment_billing_details limit 20;
+
+-- 2. Only when that data is confirmed to be unneeded — THIS DROWS ROWS.
+--    Take a backup first.
+drop table if exists public.payment_billing_details;
+```
+
+Also delete the old Edge Function in the dashboard if it is still deployed:
+**Edge Functions → `save-billing-details` → Delete**. It is not called by
+anything, and leaving a card-shaped endpoint deployed is needless attack
+surface.
+
+### 2.7 Verify the deployment
 
 Once the migration has been run and the function deployed, check the whole path
 in one command:
 
 ```bash
-node scripts/verify-save-billing-details.mjs
-# or: npm run verify:billing
+node scripts/verify-onboarding.mjs
+# or: npm run verify:onboarding
 ```
 
 It reads `.env`, uses only the **anon** key (exactly like the browser) and
 checks, in order:
 
 1. the `OPTIONS` preflight (200 + CORS headers),
-2. that `public.payment_billing_details` exists,
+2. that `public.customer_profiles` exists,
 3. that a test order can be created,
-4. that `save-billing-details` saves the billing details,
-5. that a **retry** returns the same `savedAt` (the original `created_at`),
-6. that a body containing `cardNumber` / `cvv` is rejected with `400`,
-7. that a wrong access token is rejected with `404 "Order not found."`,
-8. that replaying the order with the same `idempotency_key` returns the **same**
+4. that `complete-onboarding` creates the account and issues a customer
+   reference of the shape `CUST-XXXXXXXXXX`,
+5. that the record starts as `pending_review`,
+6. that a **retry** returns the **same** customer reference (idempotent),
+7. that a body containing `cardNumber` / `cvv` / `otp` is rejected with `400`,
+8. that a wrong access token is rejected with `404 "Order not found."`,
+9. that replaying the order with the same `idempotency_key` returns the **same**
    order, so a retry never creates a second order.
 
 It stops after step 2 if the function or the table is missing, so it does not
 create a test order while the endpoint is still broken. Once the endpoint
-works, steps 3 and 8 create one throw-away order in your database (customer
+works, steps 3 and 9 create one throw-away order in your database (customer
 *Opencode Verifier*) — check it with the Table Editor if you want to remove it.
 
 To test an order you already have instead of creating one:
 
 ```bash
-node scripts/verify-save-billing-details.mjs \
+node scripts/verify-onboarding.mjs \
   --order SF-20261021-B6564D6C \
   --token a1bbc7d5-e379-4052-a74e-4204c4313afd
 ```
@@ -256,28 +284,89 @@ routes resolve on a hard refresh.
 
 ---
 
-## 5. Payment
+## 5. Customer onboarding
+
+### 5.1 What the form collects
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| Full name | yes | |
+| Email address | yes | Must match the email the order was created with |
+| Phone number | yes | Used for the confirmation call |
+| Address line 1 / 2, city, region, postal code, country | yes / line 2 optional | Delivery address |
+| Username | yes | Letters and numbers only, 3–32 characters. Lowercased. |
+| Customer reference | **no — read-only** | Issued by the database, never typed |
+| Birth month + year | **no — optional** | Only stored when the customer provides it |
+
+There is **no** card number, expiry date, CVV, PIN, password or one-time code
+field anywhere in the application, so those credentials cannot be entered,
+transmitted or stored.
+
+### 5.2 The customer reference
+
+`customer_profiles.customer_reference` has a **database default**
+(`CUST-` + 10 hex characters). The reference is therefore:
+
+- generated by the trusted backend, never by the customer;
+- not part of the request payload — `complete-onboarding` ignores any such
+  field, because the body is allow-listed;
+- stable across retries, because the record is unique per order.
+
+It is a public reference for support conversations, **not** a credential.
+
+### 5.3 How an account is confirmed
+
+There is **no automated verification** in this application. A new account is
+written with `verification_status = 'pending_review'` and `verified_at = null`,
+and your team confirms it by phone.
+
+Consequently:
+
+- the application never claims that a verification message was sent — there is
+  no messaging integration and it never pretends otherwise;
+- no one-time code, verification code, password or authentication secret is
+  accepted, stored or logged; there is no column for one;
+- the **username is a label, not proof of account ownership**. It never grants
+  access to anything, and it is not treated as an identity by the backend.
+
+To record a confirmation, update the row (service role / Table Editor):
+
+```sql
+update public.customer_profiles
+set verification_status = 'confirmed',
+    verified_at = now(),
+    verification_reference = 'CALL-2026-10-22-0142'
+where customer_reference = 'CUST-4F2A9C1B7D';
+```
+
+`verification_reference` holds a non-sensitive pointer to the confirmation
+(ticket or call-log id) — never the content of a conversation.
+
+### 5.4 The local CSV copy
+
+After a successful onboarding, the browser renders a summary CSV
+(`account-details-<CUST-…>.csv`) and offers it as a download. It is generated
+**locally**: RFC 4180 quoting, embedded quotes doubled, and a formula-injection
+guard (a value starting with `=`, `+`, `-` or `@` is prefixed with a single
+quote). It is a copy for the customer, not a second store — nothing is
+uploaded from the browser.
+
+---
+
+## 6. Payment
 
 No real payment provider is configured in this repository, and the checkout form
 does not collect payment credentials at all. Checkout runs in **DEMO mode**:
 
 - The order is created with `order_status = pending_payment` and
   `payment_status = pending`.
-- The payment step is an iOS-inspired **Billing Details** card form that asks
-  for the **cardholder name** and the **US billing ZIP** only, with a visible
-  notice that no payment is processed. There is no card-number, expiry, CVV or
-  PIN input anywhere in the form, so those credentials can never be entered,
-  sent or stored, and **no money is charged**.
-- On submit, the permitted details (name, email, phone, cardholder name,
-  billing ZIP, shipping city/country and the order reference) are posted to a
-  **Google Apps Script web app** that appends one row to a Google Sheet, and a
-  **local CSV copy** is downloaded to the user's own device. Nothing is
-  uploaded to Supabase from this workflow. The UI shows the outcome of the
-  submission; it is explicitly **not** a payment confirmation.
+- There is no payment form. The panel that used to ask for a cardholder name
+  and a billing ZIP now asks for the **customer account** details (§5).
+- On submit, the permitted details are written to **Supabase** by the
+  `complete-onboarding` Edge Function, and a **local CSV copy** is downloaded to
+  the user's own device.
 - Clicking **Pay $100.00** calls `confirm-demo-payment`, which is the **only**
   code path that sets `payment_status = paid` / `order_status = confirmed`.
-- **Simulate failed payment** sets `payment_status = failed` while leaving the
-  order `pending_payment`, so it can be retried safely.
 - The success tick on `/order-success` is rendered only when the server reports
   `paid` + `confirmed`. Otherwise the page shows
   **“Order created — payment pending.”**
@@ -290,239 +379,112 @@ does not collect payment credentials at all. Checkout runs in **DEMO mode**:
 3. Add a **webhook** Edge Function that verifies the provider signature and,
    only after verified confirmation, updates `payment_status = paid` /
    `order_status = confirmed`.
-4. Add a hosted payment element to `src/components/checkout/BillingDetailsForm.tsx`.
+4. Add a hosted payment element to `src/pages/CheckoutPage.tsx`.
    Until such a provider exists, the form must stay credential-free: raw card
    numbers, CVVs and PINs are never sent to Supabase or any other server, never
-   stored and never logged. The only persisted fields are cardholder name,
-   billing ZIP and the submission timestamp.
+   stored and never logged.
 
 ---
 
-## 6. Security model
+## 7. Security model
 
-- The browser never determines price, totals, product details, order number or
-  statuses — `create-order` recomputes all of these from its server-side catalog.
+- The browser never determines price, totals, product details, order number,
+  customer reference or statuses — `create-order` recomputes the first three
+  from its server-side catalog and the database generates the reference.
 - RLS denies all anonymous/authenticated direct table access.
 - Guests are not required to create an Auth account.
 - Order lookup requires the per-order opaque **capability token** returned once
-  at creation (`get-order` / `confirm-demo-payment` / `save-billing-details`).
-- `payment_billing_details` holds only cardholder name, billing ZIP and a
-  timestamp. RLS is enabled with **no policies**, and the `anon` /
-  `authenticated` table grants are revoked, so only the Edge Function (service
-  role) can write. Its `order_id` is unique, making repeated submissions
-  idempotent.
-- `save-billing-details` writes that row with an explicit INSERT, and only if
-  the unique constraint rejects the INSERT (23505) does it fall back to an
-  UPDATE. The INSERT leaves `id` and `created_at` to their database defaults;
-  the UPDATE touches `cardholder_name` and `billing_postal_code` only. A retry
-  therefore reuses the existing row and keeps the **original** `created_at`.
-- `save-billing-details` **allow-lists** its request body
-  (`orderNumber`, `accessToken`, `cardholderName`, `billingPostalCode`). Any
-  other key — a card number, CVV, PIN or expiry — is rejected with `400`
-  *before* a database write is attempted, so sensitive data cannot be stored
-  even if a future client change starts sending it.
-- The checkout form has **no** card-number, expiry, CVV or PIN input. The
-  browser cannot collect a payment credential because there is nowhere to type
-  one, and the form displays a notice that no payment is processed.
-- The submission posted to the Apps Script web app is an **allow-list**:
-  `submissionId`, `orderReference`, `fullName`, `email`, `phone`,
-  `cardholderName`, `billingPostalCode`, `shippingCity`, `shippingCountry`.
-  The script rejects any other key — a card number, CVV, PIN, expiry or the
-  order capability token — *before* a row is written, so a payment credential
-  cannot be stored in the sheet even if a future client change sends one.
-- The Apps Script web app holds **no credential in the frontend**: the browser
-  only knows the deployment URL, which is configured through
-  `VITE_GOOGLE_SHEETS_ENDPOINT` and kept in the environment. The script itself
-  reads the spreadsheet ID from its own **script properties** and needs only
-  the `spreadsheets` scope.
-- Every sheet column is written with the plain-text number format, and a value
-  that starts with `=`, `+`, `-` or `@` is additionally prefixed with a single
-  quote — a submitted text can never execute as a spreadsheet formula.
-- The sheet row is de-duplicated on `submissionId`, which is the same
-  idempotency key the order uses. A retry therefore reuses the existing row
-  instead of appending a second one.
+  at creation (`get-order` / `confirm-demo-payment` / `complete-onboarding`).
+- `customer_profiles` holds only the onboarding details listed in §5.1. RLS is
+  enabled with **no policies**, and the `anon` / `authenticated` table grants
+  are revoked, so only the Edge Function (service role) can write. Its
+  `order_id` is unique, making repeated submissions idempotent.
+- `complete-onboarding` **allow-lists** its request body
+  (`orderNumber`, `accessToken`, `username`, `fullName`, `email`, `phone`,
+  `birthMonth`, `birthYear`, `addressLine1`, `addressLine2`, `city`, `region`,
+  `postalCode`, `country`). Any other key — a card number, CVV, PIN, expiry, a
+  one-time code, a password, a customer reference — is rejected with `400`
+  *before* a database write is attempted, so a credential cannot be stored
+  even if a future client change starts sending one.
+- The customer reference is **not** accepted from the client. It is produced by
+  the database default, so it cannot be chosen or forged.
+- The client-side rules are mirrored server-side (the Edge Function) and a
+  third time in the database (CHECK constraints), so a hand-crafted request
+  cannot store a shape the UI would not produce.
+- The username is unique and is treated as a label, never as proof of account
+  ownership (§5.3).
+- The birth month and year are nullable and are only stored when supplied;
+  they are never used as an identity factor.
+- The frontend holds **no** credential: only the Supabase *anon* key (safe by
+  design). The service-role key lives in the Edge Function environment and
+  never reaches the browser.
+- Every value in the local CSV is quoted, and a value that starts with `=`,
+  `+`, `-` or `@` is additionally prefixed with a single quote — a submitted
+  text can never execute as a spreadsheet formula.
 - Repeated submissions of the same checkout reuse one `idempotency_key`, so the
-  database returns the existing order instead of creating a duplicate. A failed
-  sheet submission stops the checkout with an error instead of silently
-  dropping the details, and pressing Pay again reuses the same order and the
-  same sheet row.
-- The local CSV copy is generated in the browser: RFC 4180 quoting, embedded
-  quotes doubled, and the same formula-injection guard. It is a copy for the
-  customer — it is not a second store.
+  database returns the existing order instead of creating a duplicate, and the
+  unique `order_id` on `customer_profiles` returns the existing account instead
+  of creating a second one.
 - Database errors are returned as non-2xx responses; the UI shows the error and
   never a false success.
 
 ---
 
-## 7. Testing checklist
+## 8. Testing checklist
 
-See §9 of the implementation requirements. Manual verification:
+Manual verification:
 
 1. **Buy Now** opens `/checkout` with the item, variant and quantity.
 2. **Add to Cart** updates the header count and opens the cart drawer; the cart
    persists across reloads; quantities can change and items can be removed.
 3. **Proceed to Checkout** from the cart includes the correct product/quantity.
 4. Empty/invalid form fields show inline errors and block submission —
-   including the billing fields (cardholder name required, ≤ 120 characters,
-   5-digit US ZIP or ZIP+4).
+   including the onboarding fields (username 3–32 letters/numbers, month and
+   year either both empty or both filled, year within 1900…current year).
 5. The displayed price is exactly **$100.00**.
 6. Changing a client price in dev tools does not change the server total.
 7. Orders and order items appear in the `orders` / `order_items` tables.
 8. Stopping the Edge Function / breaking the DB shows an error, not success.
-9. Double-clicking **Pay $100.00** creates a single order.
-10. **Simulate failed payment** leaves the order unpaid and retryable.
-11. The green tick appears only after a successful server confirmation.
-12. Layouts work at mobile (< 640px), tablet (~768px) and desktop (≥ 1024px).
-13. `npm run build` passes.
-14. After checkout, the Google Sheet contains one row per submission with
-    **only** the permitted fields and a server-generated timestamp — and no
-    card number, CVV, expiry or PIN.
-15. The billing form shows “Recording your submission…” and then a success or
-    error message; double-clicking **Pay $100.00** still creates one order and
-    one sheet row.
-16. A submission that contains a card number is rejected by the Apps Script
-    with `ok: false` and nothing is written.
-17. Sending the same `submissionId` twice returns `duplicate: true` and leaves
-    exactly one row in the sheet.
-18. The checkout form displays a **Demo** badge and a notice that no payment is
-    processed, and contains no card-number, expiry, CVV or PIN input.
-19. `npm test` passes (CSV escaping + the Apps Script request/response
-    contract).
-20. The Supabase path still works: `node scripts/verify-save-billing-details.mjs`
-    reports every check as **PASS** (see §2.6).
+9. Double-clicking **Pay $100.00** creates a single order **and** a single
+   customer account.
+10. The green tick appears only after a successful server confirmation.
+11. Layouts work at mobile (< 640px), tablet (~768px) and desktop (≥ 1024px).
+12. `npm run build` passes.
+13. After checkout, `customer_profiles` contains one row with a
+    `customer_reference` of the shape `CUST-XXXXXXXXXX`, a `username` matching
+    what was typed, `verification_status = 'pending_review'` and
+    `verified_at = null`.
+14. The username field rejects characters that are not letters or numbers.
+15. Leaving the birth month and year empty stores `NULL` in both columns.
+16. A request body containing `cardNumber`, `cvv` or `otp` is rejected by
+    `complete-onboarding` with `400` and nothing is written.
+17. The same checkout submitted twice returns the same customer reference and
+    does not create a second row.
+18. The customer reference field is read-only and shows “Assigned when you
+    submit” before the form is submitted.
+19. The confirmation screen shows the issued customer reference.
+20. `npm test` passes (CSV escaping + the onboarding rules and payload).
+21. The Supabase path works: `node scripts/verify-onboarding.mjs` reports every
+    check as **PASS** (see §2.7).
 
 ---
 
-## 8. Form submissions → Google Sheet (Apps Script)
+## 9. What was removed
 
-The checkout form records each submission in a Google Sheet. The browser posts
-the permitted fields to a **Google Apps Script web app**, which validates
-them, de-duplicates them and appends one row. The order itself is still
-created in Supabase — orders are a separate concern and are not affected.
+The credit-card functionality has been removed end to end:
 
-### 8.1 What is written
+| Removed | Replacement |
+| --- | --- |
+| `src/lib/paymentCard.ts` (brand detection, Luhn, expiry/CVV formatting) | — |
+| `src/components/checkout/PaymentDetailsForm.tsx` (card form) | — |
+| `src/lib/billingDetails.ts` (cardholder name + billing ZIP rules) | `src/lib/onboarding.ts` (username + optional birth month/year) |
+| `src/components/checkout/BillingDetailsForm.tsx` | `src/components/checkout/OnboardingForm.tsx` |
+| `src/lib/googleSheets.ts` + `google-apps-script/` + the Sheet write path | `supabase/functions/complete-onboarding/index.ts` (Supabase is the only store) |
+| `supabase/functions/save-billing-details/index.ts` | `supabase/functions/complete-onboarding/index.ts` |
+| `scripts/verify-save-billing-details.mjs` | `scripts/verify-onboarding.mjs` |
+| `scripts/test-sheet-submission.mjs`, `scripts/test-apps-script.mjs` | `scripts/test-onboarding.mjs` |
+| `VITE_GOOGLE_SHEETS_ENDPOINT` | — |
+| `public.payment_billing_details` writes | `public.customer_profiles` (the old table is kept, deprecated — §2.6) |
 
-| Column | Source | Notes |
-| --- | --- | --- |
-| Submission Timestamp | Apps Script | Server-generated (UTC, ISO 8601) |
-| Order Reference | `create-order` | e.g. `SF-20261021-9CC80474` |
-| Submission Id | client idempotency key | Used to de-duplicate rows |
-| Full Name | form | |
-| Email | form | |
-| Phone | form | |
-| Cardholder Name | form | |
-| Billing ZIP Code | form | US ZIP / ZIP+4 |
-| Shipping City | form | |
-| Shipping Country | form | |
-
-Never written: card number, CVV, PIN, expiry, the street address, the order
-capability token, any Google credential. The script rejects a request body
-that contains any key outside the list above.
-
-### 8.2 Create the spreadsheet
-
-1. Open <https://sheets.new> and create the spreadsheet you want to use.
-2. The script creates and owns the `Submissions` tab (and the header row) on
-   the first submission — you do not have to add anything by hand. If you
-   prefer to set the columns up yourself, create a tab named `Submissions`
-   whose row 1 contains **exactly** these headers, in this order:
-   `Submission Timestamp`, `Order Reference`, `Submission Id`, `Full Name`,
-   `Email`, `Phone`, `Cardholder Name`, `Billing ZIP Code`, `Shipping City`,
-   `Shipping Country`.
-3. Note the spreadsheet ID: it is the part between `/d/` and `/edit` in the
-   URL, `https://docs.google.com/spreadsheets/d/<SPREADSHEET_ID>/edit`.
-
-### 8.3 Deploy the Apps Script web app
-
-1. Go to <https://script.google.com> → **New project**.
-2. Delete the placeholder `Code.gs` and paste the contents of
-   `google-apps-script/save-checkout-submission.gs`.
-3. Add the manifest: **Project Settings → Show "appsscript.json" manifest file
-   in editor** → replace it with `google-apps-script/appsscript.json`.
-4. Set the configuration (this is where the configuration lives — it is not in
-   the source file):
-   - **Project Settings → Script Properties → Add script property**
-     - `SPREADSHEET_ID` = the ID from step 2.3
-     - `SHEET_NAME` = `Submissions` (optional)
-   - Or run `setupSpreadsheet()` once from the editor and answer the prompts.
-5. **Deploy → New deployment → Web app**:
-   - *Execute as*: **Me**
-   - *Who has access*: **Anyone** (required — the browser posts anonymously)
-6. Press **Authorize access** and approve the `spreadsheets` permission. This
-   is the one-time Google authorization you have to complete.
-7. Copy the **Web app URL** — it ends in `/exec`.
-
-### 8.4 Configure the frontend
-
-```bash
-# .env (never committed)
-VITE_GOOGLE_SHEETS_ENDPOINT=https://script.google.com/macros/s/AKfycb.../exec
-```
-
-On Vercel: **Project → Settings → Environment Variables** → add
-`VITE_GOOGLE_SHEETS_ENDPOINT` → redeploy (Vite inlines the value at build
-time). Add it to `.env.example` only as a placeholder.
-
-The URL is not a credential, but it **is** a capability URL: anyone who has it
-can append a row. Keep it out of public repositories and rotate it (delete the
-deployment, deploy a new one) if it leaks.
-
-### 8.5 Test it
-
-Health check — open the deployment URL in a browser:
-
-```json
-{"ok":true,"service":"checkout-submission","spreadsheetConfigured":true,"sheetName":"Submissions", ...}
-```
-
-Successful submission:
-
-```bash
-curl -s -X POST "$VITE_GOOGLE_SHEETS_ENDPOINT" \
-  -H 'Content-Type: text/plain;charset=utf-8' \
-  -d '{"submissionId":"manual-test-1","orderReference":"SF-TEST-1","fullName":"Alex Morgan","email":"alex@example.com","phone":"+15550109999","cardholderName":"Alex Morgan","billingPostalCode":"10001","shippingCity":"New York","shippingCountry":"United States"}'
-# {"ok":true,"saved":true,"duplicate":false,"row":2,"timestamp":"..."}
-```
-
-Failure — an invalid field is rejected and nothing is written:
-
-```bash
-curl -s -X POST "$VITE_GOOGLE_SHEETS_ENDPOINT" -H 'Content-Type: text/plain;charset=utf-8' \
-  -d '{"submissionId":"manual-test-2","orderReference":"SF-TEST-2","fullName":"A","email":"not-an-email","phone":"1","cardholderName":"A","billingPostalCode":"1"}'
-# {"ok":false,"error":"Field \"fullName\" is required.","field":"fullName"}
-```
-
-Duplicate — the same `submissionId` twice returns the existing row and does
-**not** append a second one:
-
-```bash
-# repeat the successful submission with the same submissionId
-# {"ok":true,"saved":true,"duplicate":true,"row":2,"timestamp":"..."}
-```
-
-Formula injection — a name that starts with `=` is stored as text:
-
-```bash
-# cardholderName "=IMPORTXML(...)" is written as "'=IMPORTXML(...)" and the
-# column is plain text, so it is never evaluated.
-```
-
-Permissions — the script runs as the account that deployed it, so that account
-needs edit access to the spreadsheet. To check: share the sheet with that
-Google account, or deploy from the sheet's owner. The `spreadsheets` scope in
-`appsscript.json` is the only scope requested; the script never asks for
-Drive access and never reads a credential from the frontend.
-
-### 8.6 If you need central collection without Apps Script
-
-The repository already contains a second, fully server-side option: the
-`save-billing-details` Edge Function with the `payment_billing_details` table
-(§2.5, §2.6). It runs in Supabase, authorises the caller with the per-order
-capability token, writes with the service role and is protected by RLS with no
-policies.
-
-Either way the rule is the same: **the frontend never holds a credential.** The
-browser may only contain the Supabase *anon* key (safe by design) or the
-deployment URL of a web app that authorises itself. A service-role key, an
-OAuth refresh token or a private key must never be embedded in frontend code
-or committed to the repository.
+There is no card-number, expiry, CVV or PIN input, no card-validation rule and
+no card-shaped payload field anywhere in the repository.

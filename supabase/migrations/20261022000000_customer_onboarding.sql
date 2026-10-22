@@ -162,6 +162,18 @@ revoke all on table public.customer_profiles from anon, authenticated;
 -- any more: the `save-billing-details` Edge Function has been removed from
 -- this repository. See README section 2.6 for the optional cleanup SQL, which
 -- must only be run once the remaining rows are confirmed to be unneeded.
+--
+-- The comment is applied through a DO block so this migration still runs
+-- cleanly on a database that never had the old table (in that case there is
+-- nothing to deprecate).
 -- ----------------------------------------------------------------------------
-comment on table public.payment_billing_details is
-  'DEPRECATED and no longer written to. Kept only so existing rows are not destroyed. It holds a cardholder name and a billing ZIP from the removed card form - delete it once that data is no longer needed (see README 2.6).';
+do $$
+begin
+  if to_regclass('public.payment_billing_details') is not null then
+    execute 'comment on table public.payment_billing_details is '
+      || quote_literal(
+        'DEPRECATED and no longer written to. Kept only so existing rows are not destroyed. It holds a cardholder name and a billing ZIP from the removed card form - delete it once that data is no longer needed (see README 2.6).'
+      );
+  end if;
+end
+$$;
