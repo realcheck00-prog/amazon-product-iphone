@@ -4,9 +4,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Download,
-  Info,
   Loader2,
-  ShieldCheck,
   UserPlus,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
@@ -136,15 +134,6 @@ export function OnboardingForm({
       </header>
 
       <div className="space-y-4 px-4 py-4 sm:px-5 sm:py-5">
-        <p className="flex items-start gap-2 rounded-xl bg-surface-sunken px-3 py-2.5 text-xs leading-relaxed text-ink-3">
-          <Info className="mt-0.5 size-3.5 shrink-0 text-[#0b63d6]" aria-hidden />
-          <span>
-            <span className="font-semibold text-ink-2">Enter the user ID number you already have.</span>{' '}
-            It identifies your account on our records — it is not a password, a code or a payment
-            card, and we confirm the account with you by phone before it is activated.
-          </span>
-        </p>
-
         <Field
           id="username"
           label="Username"
@@ -288,14 +277,6 @@ export function OnboardingForm({
 
         <div className="space-y-2 border-t border-[#ececef] pt-3">
           <p className="text-2xs text-ink-4">All amounts are shown in US Dollars (USD).</p>
-          <p className="flex items-start gap-2 rounded-xl bg-surface-sunken px-3 py-2.5 text-2xs leading-relaxed text-ink-3">
-            <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-[#0b63d6]" aria-hidden />
-            <span>
-              The record contains only your user ID number, username, name, email, phone, delivery
-              address and — if you chose to give it — your birth month and year. No card number,
-              expiry date, CVV, PIN, password or one-time code is ever collected, sent or stored.
-            </span>
-          </p>
         </div>
       </div>
     </section>
